@@ -1,4 +1,4 @@
-# webapp-ai
+# webapp-ai-teamwork
 
 Internal ERP-style web application: **Next.js (App Router)** front end with **MySQL** persistence, **JWT** session auth, and an **Ant Design** UI. Modules include customers, suppliers, products, warehouse operations, sales (quotations, orders, invoices), purchasing, and administration (users, settings, master data import/export).
 

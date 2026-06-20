@@ -1,0 +1,15 @@
+{
+  "host": "localhost",
+  "port": 3306,
+  "user": "********",
+  "password": "********",
+  "database": "teamwork",
+  "connectTimeout": 10000,
+  "waitForConnections": true,
+  "connectionLimit": 10,
+  "queueLimit": 0,
+  "enableKeepAlive": true,
+  "keepAliveInitialDelay": 0,
+  "idleTimeout": 60000,
+  "maxIdle": 10
+} 

@@ -1,0 +1,151 @@
+<div class="transaction-print-template">
+  <header class="print-header">
+    <h1 class="print-title">{{documentTitle}}</h1>
+    <div class="print-shop-block">
+      <div class="print-shop-name">{{shopName}}</div>
+      {{#if shopPhone}}<div class="print-shop-meta">Tel: {{shopPhone}}</div>{{/if}}
+      {{#if shopAddress}}<div class="print-shop-meta">{{shopAddress}}</div>{{/if}}
+    </div>
+  </header>
+  <div class="print-meta-row">
+    <span class="print-meta-label">{{codeLabel}}</span>
+    <span class="print-meta-value">{{transCode}}</span>
+    <span class="print-meta-spacer"></span>
+    <span class="print-meta-label">Date:</span>
+    <span class="print-meta-value">{{createDate}}</span>
+    {{#if showReferCode}}<span class="print-meta-spacer"></span>
+    <span class="print-meta-label">Reference:</span>
+    <span class="print-meta-value">{{referCode}}</span>{{/if}}
+  </div>
+  <div class="print-section">
+    <div class="print-section-label">Bill To / Customer</div>
+    <div class="print-customer-block">
+      <div class="print-customer-name">{{partyName}}</div>
+      {{#if partyPhone}}<div class="print-customer-meta">Tel: {{partyPhone}}</div>{{/if}}
+      {{#if partyEmail}}<div class="print-customer-meta">Email: {{partyEmail}}</div>{{/if}}
+    </div>
+  </div>
+  <table class="print-table" cellpadding="0" cellspacing="0">
+    <thead><tr>
+      <th class="print-th print-col-no">#</th>
+      <th class="print-th print-col-item">Item / Description</th>
+      <th class="print-th print-col-qty">Qty</th>
+      <th class="print-th print-col-unit">Unit</th>
+      <th class="print-th print-col-price">Unit Price</th>
+      <th class="print-th print-col-disc">Disc %</th>
+      <th class="print-th print-col-amount">Amount</th>
+    </tr></thead>
+    <tbody>{{#each details}}<tr>
+      <td class="print-td print-col-no">{{index}}</td>
+      <td class="print-td print-col-item">{{item_code}}<span class="print-item-desc">{{item_desc}}</span></td>
+      <td class="print-td print-col-qty">{{qty}}</td>
+      <td class="print-td print-col-unit">{{unit}}</td>
+      <td class="print-td print-col-price">{{price}}</td>
+      <td class="print-td print-col-disc">{{discount}}</td>
+      <td class="print-td print-col-amount">{{line_amount}}</td>
+    </tr>{{/each}}</tbody>
+  </table>
+  {{#if showPayment}}<div class="print-payment-section">
+    <div class="print-section-label">Payment</div>
+    {{#each paymentTotals}}<div class="print-payment-row"><span>{{label}}</span><span>{{amount}}</span></div>{{/each}}
+  </div>{{/if}}
+  <div class="print-footer">
+    <div class="print-total-row"><span class="print-total-label">Total:</span><span class="print-total-value">{{total}}</span></div>
+    {{#if hasRemark}}<div class="print-remark"><span class="print-remark-label">Remark: </span>{{remark}}</div>{{/if}}
+  </div>
+</div>
+
+<style>
+  .transaction-print-template {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 12px;
+    color: #111;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  .print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #333;
+  }
+  .print-title {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .print-shop-block { text-align: right; }
+  .print-shop-name { font-weight: 600; font-size: 14px; }
+  .print-shop-meta { margin-top: 2px; color: #444; }
+  .print-meta-row { margin-bottom: 16px; }
+  .print-meta-label { font-weight: 600; margin-right: 6px; }
+  .print-meta-value { margin-right: 20px; }
+  .print-meta-spacer { margin-left: 24px; }
+  .print-section { margin-bottom: 16px; }
+  .print-section-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #666;
+    margin-bottom: 4px;
+  }
+  .print-customer-name { font-weight: 600; font-size: 14px; }
+  .print-customer-meta { margin-top: 2px; color: #444; }
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    margin-bottom: 16px;
+  }
+  .print-th {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 2px solid #333;
+    font-weight: 600;
+    font-size: 11px;
+  }
+  .print-td {
+    padding: 6px;
+    border-bottom: 1px solid #ddd;
+  }
+  .print-col-no { width: 32px; }
+  .print-col-item { min-width: 160px; }
+  .print-col-qty { width: 56px; }
+  .print-col-unit { width: 48px; }
+  .print-col-price { width: 80px; }
+  .print-col-disc { width: 56px; }
+  .print-col-amount { width: 80px; }
+  .print-item-desc { color: #444; margin-left: 4px; }
+  .print-payment-section { margin-bottom: 12px; }
+  .print-payment-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 0;
+  }
+  .print-footer {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px solid #333;
+  }
+  .print-total-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  .print-total-label { font-weight: 700; font-size: 14px; }
+  .print-total-value { font-weight: 700; font-size: 16px; }
+  .print-remark { margin-top: 8px; color: #444; font-size: 11px; }
+  .print-remark-label { font-weight: 600; }
+  @media print {
+    .transaction-print-template {
+      padding: 0 !important;
+      max-width: 100% !important;
+    }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>

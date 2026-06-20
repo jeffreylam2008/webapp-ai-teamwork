@@ -1,0 +1,87 @@
+[
+  {
+    "key": "home",
+    "label": "Home",
+    "icon": "HomeOutlined",
+    "href": "/",
+    "order": 1
+  },
+  {
+    "key": "customers",
+    "label": "Customers",
+    "icon": "TeamOutlined",
+    "href": "/customers",
+    "order": 2
+  },
+  {
+    "key": "suppliers",
+    "label": "Suppliers",
+    "icon": "UserSwitchOutlined",
+    "href": "/suppliers",
+    "order": 3
+  },
+  {
+    "key": "products",
+    "label": "Products",
+    "icon": "AppstoreOutlined",
+    "order": 4,
+    "submenu": [
+      { "key": "items", "label": "Items", "href": "/products/items" },
+      { "key": "categories", "label": "Categories", "href": "/products/categories" }
+    ]
+  },
+  {
+    "key": "warehouse",
+    "label": "Warehouse",
+    "icon": "TruckOutlined",
+    "order": 5,
+    "submenu": [
+      { "key": "stock", "label": "Stock", "href": "/warehouse/stock" }
+    ]
+  },
+  {
+    "key": "purchasing",
+    "label": "Purchasing",
+    "icon": "CreditCardOutlined",
+    "order": 5.5,
+    "submenu": [
+      { "key": "purchases", "label": "Purchase Orders", "href": "/purchasing/purchases" }
+    ]
+  },
+  {
+    "key": "sales",
+    "label": "Sales",
+    "icon": "ShoppingOutlined",
+    "order": 6,
+    "submenu": [
+      { "key": "invoices", "label": "Invoices", "href": "/sales/invoices" },
+      { "key": "monthly-invoices", "label": "Monthly Invoices", "href": "/sales/monthly-invoices" },
+      { "key": "orders", "label": "Sales Order", "href": "/sales/orders" },
+      { "key": "quotations", "label": "Quotations", "href": "/sales/quotations" }
+    ]
+  },
+  {
+    "key": "administration",
+    "label": "Administration",
+    "icon": "SettingOutlined",
+    "order": 7,
+    "submenu": [
+      { "key": "users", "label": "Users", "href": "/administration/users" },
+      {
+        "key": "settings",
+        "label": "Settings",
+        "href": "/administration/settings",
+        "submenu": [
+          { "key": "district", "label": "Districts", "href": "/administration/settings/district" },
+          { "key": "prefix", "label": "Prefixes", "href": "/administration/settings/prefix" },
+          { "key": "payment-method", "label": "Payment Methods", "href": "/administration/settings/payment-method" },
+          { "key": "payment-term", "label": "Payment Terms", "href": "/administration/settings/payment-term" },
+          { "key": "shops", "label": "Shops", "href": "/administration/settings/shops" }
+        ]
+      },
+      { "key": "master-data", "label": "Import/Export", "href": "/administration/master-data" },
+      { "key": "system", "label": "System", "href": "/administration/settings/system" },
+      { "key": "profile", "label": "Profile", "href": "/administration/profile" }
+    ]
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "cate_code": "BEAUTY",
+    "desc": "Beauty"
+  },
+  {
+    "cate_code": "ELEC",
+    "desc": "Electronics"
+  },
+  {
+    "cate_code": "FRAG",
+    "desc": "Fragrances"
+  },
+  {
+    "cate_code": "FURN",
+    "desc": "Furniture"
+  },
+  {
+    "cate_code": "GROC",
+    "desc": "Groceries"
+  },
+  {
+    "cate_code": "OFFICE",
+    "desc": "Office Supplies"
+  }
+]

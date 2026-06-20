@@ -1,0 +1,698 @@
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    color-scheme: dark;
+  }
+}
+
+.layout-root {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  background: #222;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 0;
+  transition: width 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+.sidebar-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  padding: 0 24px 24px 24px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 24px;
+}
+
+.sidebar-nav a {
+  color: #fff;
+  opacity: 0.85;
+  font-size: 1.1rem;
+  transition: opacity 0.2s;
+}
+
+.sidebar-nav a:hover {
+  opacity: 1;
+}
+
+.sidebar-nav a.active {
+  color: #ffd700;
+  font-weight: bold;
+  opacity: 1;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 4px;
+  padding: 4px 0;
+  margin: 0;
+  width: 100%;
+  display: block;
+}
+
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.header {
+  background: #f5f5f5;
+  color: #222;
+  padding: 20px 32px;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  .header {
+    background: #181818;
+    color: #ededed;
+    border-bottom: 1px solid #222;
+  }
+}
+
+.content {
+  flex: 1;
+  padding: 32px;
+  background: none;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.layout-root.collapsed .sidebar {
+  width: 60px;
+}
+.layout-root.collapsed .sidebar .sidebar-title,
+.layout-root.collapsed .sidebar .sidebar-nav a,
+.layout-root.collapsed .sidebar .submenu,
+.layout-root.collapsed .sidebar .submenu-btn {
+  display: none;
+}
+.layout-root.collapsed .sidebar .collapse-btn {
+  align-self: center;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  border-bottom: 1px solid #333;
+}
+
+.logo-placeholder {
+  width: 60px;
+  height: 60px;
+  background: #bbb;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  color: #fff;
+  text-align: center;
+}
+
+.header-logo {
+  width: 40px;
+  height: 40px;
+  background: #bbb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.collapse-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.2rem;
+  cursor: pointer;
+  margin-left: 8px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.collapse-btn:hover {
+  background: #444;
+}
+
+.sidebar-menu {
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s;
+}
+
+.sidebar-menu.active > .submenu-btn {
+  background: #444;
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.submenu-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  opacity: 0.85;
+  font-size: 1.1rem;
+  padding: 8px 0;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.2s;
+}
+
+.submenu-btn:hover {
+  opacity: 1;
+}
+
+.sidebar-menu.active > .submenu-btn {
+  background: #444;
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.submenu {
+  display: none;
+  padding-left: 16px;
+  margin-top: 8px;
+}
+
+.submenu.open {
+  display: block !important;
+}
+
+/* Debug: Make submenu items more visible */
+.submenu a {
+  color: #fff;
+  opacity: 0.85;
+  font-size: 1rem;
+  padding: 4px 0;
+  display: block;
+  transition: opacity 0.2s;
+}
+
+.submenu a:hover {
+  opacity: 1;
+}
+
+.submenu a.active {
+  color: #ffd700;
+  font-weight: bold;
+  opacity: 1;
+  background: rgba(255, 215, 0, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+  margin: 0 -8px;
+}
+
+.sub-submenu-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  opacity: 0.85;
+  font-size: 1rem;
+  padding: 4px 0;
+  cursor: pointer;
+  text-align: left;
+  transition: opacity 0.2s;
+}
+
+.sub-submenu-btn:hover {
+  opacity: 1;
+}
+
+.submenu-item.active > .sub-submenu-btn {
+  color: #ffd700;
+  font-weight: bold;
+  opacity: 1;
+}
+
+.sub-submenu {
+  display: none;
+  padding-left: 16px;
+  margin-top: 4px;
+}
+
+.sub-submenu.open {
+  display: block;
+}
+
+.submenu-item {
+  margin: 4px 0;
+}
+
+.sub-submenu a {
+  color: #fff;
+  opacity: 0.85;
+  font-size: 0.95rem;
+  padding: 2px 0;
+  display: block;
+  transition: opacity 0.2s;
+}
+
+.sub-submenu a:hover {
+  opacity: 1;
+}
+
+.sub-submenu a.active {
+  color: #ffd700;
+  font-weight: bold;
+  opacity: 1;
+}
+
+.header-logo {
+  width: 40px;
+  height: 40px;
+  background: #bbb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.header-debug {
+  display: flex;
+  align-items: center;
+  margin-right: 16px;
+}
+
+.debug-link {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  color: #222;
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 0.2s;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.debug-link:hover {
+  background: rgba(0, 0, 0, 0.1);
+  border-color: rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.debug-link.active {
+  background: #007bff;
+  color: white;
+  border-color: #007bff;
+}
+
+.debug-link.active:hover {
+  background: #0056b3;
+  border-color: #0056b3;
+}
+
+@media (prefers-color-scheme: dark) {
+  .debug-link {
+    color: #ededed;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .debug-link:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  
+  .debug-link.active {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+  }
+  
+  .debug-link.active:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+  }
+}
+
+.header-login {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-icon {
+  background: none;
+  border: none;
+  color: #222;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 50%;
+  transition: background 0.2s;
+}
+
+.login-icon:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.login-dropdown {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  min-width: 140px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  padding: 8px 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.15s;
+}
+
+.login-dropdown-item {
+  padding: 10px 20px;
+  color: #222;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.15s;
+}
+
+.login-dropdown-item:hover {
+  background: #f5f5f5;
+}
+
+@media (prefers-color-scheme: dark) {
+  .login-dropdown {
+    background: #222;
+    color: #ededed;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  }
+  .login-dropdown-item {
+    color: #ededed;
+  }
+  .login-dropdown-item:hover {
+    background: #333;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* API Integration Styles */
+.loading-spinner {
+  font-size: 2rem;
+  text-align: center;
+  margin: 2rem 0;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 8px;
+  padding: 1rem;
+  margin: 1rem 0;
+  color: #c33;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 2rem 0 1rem 0;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.refresh-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.refresh-btn:hover {
+  background: #0056b3;
+}
+
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.product-card {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.product-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.product-card h4 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.2rem;
+}
+
+.product-card p {
+  margin: 0.5rem 0;
+  color: #666;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error-message {
+    background: #2a1a1a;
+    border-color: #4a2a2a;
+    color: #ff6b6b;
+  }
+  
+  .product-card {
+    background: #1a1a1a;
+    border-color: #333;
+    color: #ededed;
+  }
+  
+  .product-card h4 {
+    color: #ededed;
+  }
+  
+  .product-card p {
+    color: #bbb;
+  }
+  
+  .page-header {
+    border-bottom-color: #333;
+  }
+}
+
+.menu-icon {
+  display: inline-block;
+  width: 24px;
+  text-align: center;
+  margin-right: 0.5em;
+}
+
+.menu-label {
+  transition: opacity 0.2s, width 0.2s;
+  white-space: nowrap;
+}
+
+.layout-root.collapsed .menu-label {
+  display: none;
+}
+
+.sidebar-toggle-btn {
+  position: absolute;
+  left: 220px;
+  top: 24px;
+  z-index: 10;
+  background: #222;
+  color: #fff;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  width: 32px;
+  height: 40px;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: left 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+.layout-root.collapsed .sidebar-toggle-btn {
+  left: 60px;
+}
+
+@media (max-width: 600px) {
+  .sidebar-toggle-btn {
+    left: 100vw;
+    top: 8px;
+  }
+  .layout-root.collapsed .sidebar-toggle-btn {
+    left: 60px;
+  }
+}
+
+/* Sidebar: only the leaf menu item (e.g. Payment Terms) gets selected background, not parent submenus */
+.ant-menu-inline .ant-menu-submenu > .ant-menu-submenu-title {
+  background: transparent !important;
+}
+.ant-menu-inline .ant-menu-submenu-open > .ant-menu-submenu-title {
+  background: transparent !important;
+}
+
+/* All tables: alternating row colors (odd/even) */
+.ant-table-tbody > tr:nth-child(even) > td {
+  background-color: #fafafa !important;
+}
+.ant-table-tbody > tr:nth-child(odd) > td {
+  background-color: #ffffff !important;
+}
+
+/* Maximize table width to inner page edge: minimal horizontal padding when container has a table */
+.px-8:has(.ant-table),
+div[class*='px-8']:has(.ant-table) {
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+
+/* Tailwind CSS - Must be at the end to ensure highest priority */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Transaction print popup: template only — no app chrome, minimal browser margins */
+body.transaction-print-window {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  overflow-x: auto;
+}
+
+body.transaction-print-window .transaction-print-document,
+body.transaction-print-window .transaction-print-html-output {
+  margin: 0;
+  padding: 0;
+}
+
+body.transaction-print-window .print-window-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 100vh;
+  color: #666;
+}
+
+body.transaction-print-window .print-window-error {
+  padding: 24px;
+}
+
+body.transaction-print-preview .print-window-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 50vh;
+  color: #666;
+}
+
+body.transaction-print-preview .transaction-print-preview-body {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+@media print {
+  body.transaction-print-window {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body.transaction-print-window .print-window-loading,
+  body.transaction-print-window .print-window-error {
+    display: none !important;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}

@@ -1,0 +1,202 @@
+[
+  {
+    "item_code": "BEA-001",
+    "eng_name": "Essence Mascara Lash Princess",
+    "chi_name": "睫毛膏",
+    "desc": "Volumizing and lengthening mascara. Long-lasting, cruelty-free formula.",
+    "price": 9.99,
+    "price_special": 8.95,
+    "cate_code": "BEAUTY",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "BEA-002",
+    "eng_name": "Eyeshadow Palette with Mirror",
+    "chi_name": "眼影盤",
+    "desc": "Versatile eyeshadow shades with built-in mirror for on-the-go application.",
+    "price": 19.99,
+    "price_special": 16.35,
+    "cate_code": "BEAUTY",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "BEA-003",
+    "eng_name": "Powder Canister",
+    "chi_name": "定妝粉",
+    "desc": "Finely milled setting powder to set makeup and control shine.",
+    "price": 14.99,
+    "price_special": 13.51,
+    "cate_code": "BEAUTY",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "BEA-004",
+    "eng_name": "Red Lipstick",
+    "chi_name": "口紅",
+    "desc": "Classic bold red lipstick. Creamy, pigmented, long-lasting finish.",
+    "price": 12.99,
+    "price_special": 11.41,
+    "cate_code": "BEAUTY",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "FRA-001",
+    "eng_name": "Calvin Klein CK One",
+    "chi_name": "香水",
+    "desc": "Classic unisex fragrance. Fresh and clean scent for everyday wear.",
+    "price": 49.99,
+    "price_special": 49.05,
+    "cate_code": "FRAG",
+    "unit": "bottle"
+  },
+  {
+    "item_code": "FRA-002",
+    "eng_name": "Chanel Coco Noir Eau De",
+    "chi_name": "香水",
+    "desc": "Elegant fragrance with grapefruit, rose and sandalwood. For evening.",
+    "price": 129.99,
+    "price_special": 108.54,
+    "cate_code": "FRAG",
+    "unit": "bottle"
+  },
+  {
+    "item_code": "FRA-003",
+    "eng_name": "Dior J'adore",
+    "chi_name": "香水",
+    "desc": "Luxurious floral fragrance. Ylang-ylang, rose and jasmine.",
+    "price": 89.99,
+    "price_special": 76.74,
+    "cate_code": "FRAG",
+    "unit": "bottle"
+  },
+  {
+    "item_code": "FUR-001",
+    "eng_name": "Annibale Colombo Bed",
+    "chi_name": "床架",
+    "desc": "Luxurious bed frame. High-quality materials, comfortable and stylish.",
+    "price": 1899.99,
+    "price_special": 1737.14,
+    "cate_code": "FURN",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "FUR-002",
+    "eng_name": "Annibale Colombo Sofa",
+    "chi_name": "沙發",
+    "desc": "Sophisticated sofa. Exquisite design and premium upholstery.",
+    "price": 2499.99,
+    "price_special": 2140.00,
+    "cate_code": "FURN",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "FUR-003",
+    "eng_name": "Bedside Table African Cherry",
+    "chi_name": "床頭櫃",
+    "desc": "Stylish bedside table in African Cherry. Convenient storage.",
+    "price": 299.99,
+    "price_special": 242.72,
+    "cate_code": "FURN",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "FUR-004",
+    "eng_name": "Executive Conference Chair",
+    "chi_name": "會議椅",
+    "desc": "Modern ergonomic chair. Timeless design for office or conference room.",
+    "price": 499.99,
+    "price_special": 489.99,
+    "cate_code": "FURN",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "GRO-001",
+    "eng_name": "Apple",
+    "chi_name": "蘋果",
+    "desc": "Fresh crisp apples. For snacking or recipes.",
+    "price": 1.99,
+    "price_special": 1.74,
+    "cate_code": "GROC",
+    "unit": "kg"
+  },
+  {
+    "item_code": "GRO-002",
+    "eng_name": "Beef Steak",
+    "chi_name": "牛排",
+    "desc": "High-quality beef steak. For grilling or pan cooking.",
+    "price": 12.99,
+    "price_special": 11.74,
+    "cate_code": "GROC",
+    "unit": "kg"
+  },
+  {
+    "item_code": "GRO-003",
+    "eng_name": "Chicken Meat",
+    "chi_name": "雞肉",
+    "desc": "Fresh tender chicken. For various culinary preparations.",
+    "price": 9.99,
+    "price_special": 8.61,
+    "cate_code": "GROC",
+    "unit": "kg"
+  },
+  {
+    "item_code": "GRO-004",
+    "eng_name": "Cooking Oil",
+    "chi_name": "食油",
+    "desc": "Versatile cooking oil. For frying, sautéing and cooking.",
+    "price": 4.99,
+    "price_special": 4.52,
+    "cate_code": "GROC",
+    "unit": "bottle"
+  },
+  {
+    "item_code": "ELEC-001",
+    "eng_name": "Wireless Headphones",
+    "chi_name": "無線耳機",
+    "desc": "High-quality wireless headphones. Clear sound, long battery.",
+    "price": 149.99,
+    "price_special": 134.99,
+    "cate_code": "ELEC",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "ELEC-002",
+    "eng_name": "USB-C Cable 2m",
+    "chi_name": "USB-C 線 2米",
+    "desc": "Durable USB-C cable. Fast charging and data sync.",
+    "price": 12.99,
+    "price_special": null,
+    "cate_code": "ELEC",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "ELEC-003",
+    "eng_name": "Desktop Mouse",
+    "chi_name": "滑鼠",
+    "desc": "Ergonomic optical mouse. Plug and play.",
+    "price": 24.99,
+    "price_special": 22.49,
+    "cate_code": "ELEC",
+    "unit": "pcs"
+  },
+  {
+    "item_code": "OFF-001",
+    "eng_name": "A4 Copy Paper 500 Sheets",
+    "chi_name": "A4 影印紙 500張",
+    "desc": "Standard 80gsm white copy paper. For printer and copier.",
+    "price": 5.99,
+    "price_special": null,
+    "cate_code": "OFFICE",
+    "unit": "ream"
+  },
+  {
+    "item_code": "OFF-002",
+    "eng_name": "Ballpoint Pen Blue",
+    "chi_name": "藍色原子筆",
+    "desc": "Smooth ballpoint pen. Blue ink, pack of 12.",
+    "price": 3.99,
+    "price_special": 3.59,
+    "cate_code": "OFFICE",
+    "unit": "pack"
+  }
+]

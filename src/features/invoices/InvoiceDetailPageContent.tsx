@@ -226,7 +226,7 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
         {t.detailPage.print}
       </Button>
       <Button onClick={() => void load()} disabled={loading}>
-        {t.detailPage.refresh ?? t.detailPage.retry}
+        {t.detailPage.refresh}
       </Button>
       {header && header.is_void !== 1 && header.is_settle !== 1 && can('void_invoice') && (
         <Button

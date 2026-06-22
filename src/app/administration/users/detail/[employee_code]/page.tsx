@@ -8,8 +8,8 @@ import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { App, Button, Card, Checkbox, Form, Input, Spin, Table } from 'antd';
+import { ArrowLeftOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { App, Button, Card, Checkbox, Form, Input, Select, Spin, Table } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
 import { TRANSACTION_PERMISSIONS, FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
@@ -23,6 +23,10 @@ interface AdminUser {
   status: number;
 }
 
+interface FormOptions {
+  shops: Array<{ shop_code: string; name: string }>;
+}
+
 function UserDetailPageContent() {
   const params = useParams();
   const router = useRouter();
@@ -30,6 +34,7 @@ function UserDetailPageContent() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const bc = useMemo(() => getBreadcrumbLabels(lang), [lang]);
   const ud = useMemo(() => getAdminPagesTexts(lang).userDetail, [lang]);
+  const ul = useMemo(() => getAdminPagesTexts(lang).usersList, [lang]);
   const { token, user: currentUser } = useAuth();
   const { message: messageApi } = App.useApp();
   const employeeCode = params?.employee_code as string;
@@ -39,7 +44,9 @@ function UserDetailPageContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [shopOptions, setShopOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [form] = Form.useForm();
+  const [userInfoForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
   const goBackToUsers = useBackNavigation(() => router.push('/administration/users'));
@@ -70,6 +77,23 @@ function UserDetailPageContent() {
           return;
         }
         setUser(u);
+        userInfoForm.setFieldsValue({
+          default_shopcode: u.default_shopcode,
+        });
+        const optionsRes = await fetchWithAuth('/api/administration/users/form-options', token, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const optionsJson = await optionsRes.json();
+        if (!controller.signal.aborted && optionsJson.success && optionsJson.data) {
+          const data = optionsJson.data as FormOptions;
+          setShopOptions(
+            (data.shops ?? []).map((s) => ({
+              value: s.shop_code,
+              label: `${s.shop_code} — ${s.name}`,
+            }))
+          );
+        }
         const permRes = await fetchWithAuth(
           `/api/administration/users/${encodeURIComponent(u.employee_code)}/permissions`,
           token,
@@ -96,15 +120,23 @@ function UserDetailPageContent() {
       }
     })();
     return () => controller.abort();
-  }, [employeeCode, token, ud]);
+  }, [employeeCode, token, ud, userInfoForm]);
 
   const handleSave = async () => {
     if (!user || !token) return;
+    let profileValues: { default_shopcode?: string };
+    try {
+      profileValues = await userInfoForm.validateFields();
+    } catch {
+      return;
+    }
     const permValues = form.getFieldsValue(true) as Record<string, boolean>;
     const selected = TRANSACTION_PERMISSIONS.filter((p) => permValues[p.key]).map((p) => p.key);
     const pwdValues = passwordForm.getFieldsValue(true) as { new_password?: string; confirm_password?: string };
     const newPwd = (pwdValues.new_password ?? '').trim();
     const confirmPwd = (pwdValues.confirm_password ?? '').trim();
+    const nextDefaultShop = String(profileValues.default_shopcode ?? '').trim();
+    const shopChanged = nextDefaultShop !== String(user.default_shopcode || '').trim();
 
     if (newPwd !== '' || confirmPwd !== '') {
       if (newPwd !== confirmPwd) {
@@ -114,7 +146,35 @@ function UserDetailPageContent() {
     }
 
     setSaving(true);
+    let profileUpdated = false;
     try {
+      if (shopChanged) {
+        const profileRes = await fetchWithAuth(
+          `/api/administration/users/${encodeURIComponent(user.employee_code)}`,
+          token,
+          {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_shopcode: nextDefaultShop }),
+          }
+        );
+        const profileResult = await profileRes.json();
+        if (!profileResult.success) {
+          messageApi.error(profileResult.error || ud.failedUpdateProfile);
+          setSaving(false);
+          return;
+        }
+        setUser((prev) =>
+          prev
+            ? {
+                ...prev,
+                default_shopcode: nextDefaultShop,
+              }
+            : prev
+        );
+        profileUpdated = true;
+      }
+
       const res = await fetchWithAuth(
         `/api/administration/users/${encodeURIComponent(user.employee_code)}/permissions`,
         token,
@@ -154,14 +214,16 @@ function UserDetailPageContent() {
         );
         const pwdResult = await pwdRes.json();
         if (pwdResult.success) {
-          messageApi.success(ud.accessAndPasswordUpdated);
+          messageApi.success(
+            profileUpdated ? ud.accessAndProfileUpdated : ud.accessAndPasswordUpdated
+          );
           passwordForm.resetFields();
         } else {
-          messageApi.success(ud.accessUpdated);
+          messageApi.success(profileUpdated ? ud.accessAndProfileUpdated : ud.accessUpdated);
           messageApi.error(pwdResult.error || ud.failedUpdatePassword);
         }
       } else {
-        messageApi.success(ud.accessUpdated);
+        messageApi.success(profileUpdated ? ud.accessAndProfileUpdated : ud.accessUpdated);
       }
     } catch (e) {
       messageApi.error(ud.failedUpdate);
@@ -298,6 +360,13 @@ function UserDetailPageContent() {
             {ud.backToUsers}
           </Button>
           <Button
+            icon={<PlusOutlined />}
+            title={ul.actionAddUser}
+            onClick={() => router.push('/administration/users/add')}
+          >
+            {ul.add}
+          </Button>
+          <Button
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
@@ -333,6 +402,30 @@ function UserDetailPageContent() {
       actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || resetting }}
     >
       <div className="px-8 py-6 bg-white">
+        <Card title={ud.cardUserInfo} size="small" className="max-w-3xl mb-6">
+          <p className="text-neutral-500 text-sm mb-3">{ud.cardUserInfoHint}</p>
+          <Form form={userInfoForm} layout="vertical" style={{ maxWidth: 480 }}>
+            <Form.Item label={ud.labelEmployeeCode}>
+              <Input value={user.employee_code} disabled />
+            </Form.Item>
+            <Form.Item label={ud.labelUsername}>
+              <Input value={user.username} disabled />
+            </Form.Item>
+            <Form.Item
+              label={ud.labelDefaultShop}
+              name="default_shopcode"
+              rules={[{ required: true, message: ud.ruleDefaultShop }]}
+            >
+              <Select
+                placeholder={ud.phDefaultShop}
+                options={shopOptions}
+                showSearch
+                optionFilterProp="label"
+              />
+            </Form.Item>
+          </Form>
+        </Card>
+
         <Card
           title={ud.cardTransactionAccess}
           size="small"

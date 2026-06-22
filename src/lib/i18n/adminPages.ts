@@ -11,6 +11,7 @@ export type AdminPagesTexts = {
     refresh: string;
     /** Icon-only row action (product items list style) */
     actionViewUser: string;
+    actionAddUser: string;
     accessButton: string;
     colAccess: string;
     colUsername: string;
@@ -24,6 +25,42 @@ export type AdminPagesTexts = {
     statusInactive: string;
     loading: string;
     empty: string;
+    add: string;
+  };
+  userAdd: {
+    title: string;
+    description: string;
+    back: string;
+    backToUsers: string;
+    created: string;
+    failedCreate: string;
+    passwordMismatch: string;
+    labelEmployeeCode: string;
+    labelUsername: string;
+    labelPassword: string;
+    labelConfirmPassword: string;
+    labelDefaultShop: string;
+    labelRole: string;
+    labelStatus: string;
+    phEmployeeCode: string;
+    phUsername: string;
+    phPassword: string;
+    phConfirmPassword: string;
+    phDefaultShop: string;
+    phRole: string;
+    ruleEmployeeCode: string;
+    ruleUsername: string;
+    rulePassword: string;
+    ruleConfirmPassword: string;
+    ruleDefaultShop: string;
+    ruleRole: string;
+    rulePasswordMin: string;
+    validatorPasswordMatch: string;
+    statusActive: string;
+    statusInactive: string;
+    cardUserInfo: string;
+    loadingOptions: string;
+    failedLoadOptions: string;
   };
   masterData: {
     title: string;
@@ -78,6 +115,13 @@ export type AdminPagesTexts = {
     linkNone: string;
     cardPassword: string;
     cardPasswordHint: string;
+    cardUserInfo: string;
+    cardUserInfoHint: string;
+    labelEmployeeCode: string;
+    labelUsername: string;
+    labelDefaultShop: string;
+    phDefaultShop: string;
+    ruleDefaultShop: string;
     labelNewPassword: string;
     labelConfirmPassword: string;
     phNewPassword: string;
@@ -89,7 +133,9 @@ export type AdminPagesTexts = {
     failedLoadUser: string;
     passwordMismatch: string;
     failedUpdateAccess: string;
+    failedUpdateProfile: string;
     accessAndPasswordUpdated: string;
+    accessAndProfileUpdated: string;
     accessUpdated: string;
     failedUpdatePassword: string;
     failedUpdate: string;
@@ -351,6 +397,7 @@ const EN: AdminPagesTexts = {
     description: 'Manage users and their access to transaction edit and void functions',
     refresh: 'Refresh',
     actionViewUser: 'View user',
+    actionAddUser: 'Add user',
     accessButton: '',
     colAccess: 'Access',
     colUsername: 'Username',
@@ -364,6 +411,42 @@ const EN: AdminPagesTexts = {
     statusInactive: 'Inactive',
     loading: 'Loading users...',
     empty: 'No users found.',
+    add: 'Add User',
+  },
+  userAdd: {
+    title: 'Add User',
+    description: 'Create a new employee account with login credentials and default access',
+    back: 'Back',
+    backToUsers: 'Back to Users',
+    created: 'User created successfully',
+    failedCreate: 'Failed to create user',
+    passwordMismatch: 'Passwords do not match',
+    labelEmployeeCode: 'Employee Code',
+    labelUsername: 'Username',
+    labelPassword: 'Password',
+    labelConfirmPassword: 'Confirm Password',
+    labelDefaultShop: 'Default Shop',
+    labelRole: 'Role',
+    labelStatus: 'Status',
+    phEmployeeCode: 'Enter employee code',
+    phUsername: 'Enter username',
+    phPassword: 'Enter password (min. 6 characters)',
+    phConfirmPassword: 'Confirm password',
+    phDefaultShop: 'Select default shop',
+    phRole: 'Select role',
+    ruleEmployeeCode: 'Employee code is required',
+    ruleUsername: 'Username is required',
+    rulePassword: 'Password is required',
+    ruleConfirmPassword: 'Please confirm password',
+    ruleDefaultShop: 'Default shop is required',
+    ruleRole: 'Role is required',
+    rulePasswordMin: 'Password must be at least 6 characters',
+    validatorPasswordMatch: 'Passwords do not match',
+    statusActive: 'Active',
+    statusInactive: 'Inactive',
+    cardUserInfo: 'User Information',
+    loadingOptions: 'Loading form options...',
+    failedLoadOptions: 'Failed to load form options',
   },
   masterData: {
     title: 'Master Data Import/Export',
@@ -423,6 +506,13 @@ const EN: AdminPagesTexts = {
     cardPassword: 'Change password',
     cardPasswordHint:
       'Optionally set a new password for this user. Leave blank to keep current password. Use the Save button above to apply.',
+    cardUserInfo: 'User information',
+    cardUserInfoHint: 'Update the default shop used when this user logs in.',
+    labelEmployeeCode: 'Employee Code',
+    labelUsername: 'Username',
+    labelDefaultShop: 'Default Shop',
+    phDefaultShop: 'Select default shop',
+    ruleDefaultShop: 'Default shop is required',
     labelNewPassword: 'New password',
     labelConfirmPassword: 'Confirm password',
     phNewPassword: 'New password (optional)',
@@ -435,7 +525,9 @@ const EN: AdminPagesTexts = {
     failedLoadUser: 'Failed to load user',
     passwordMismatch: 'Passwords do not match',
     failedUpdateAccess: 'Failed to update access control',
+    failedUpdateProfile: 'Failed to update user information',
     accessAndPasswordUpdated: 'Access control and password updated',
+    accessAndProfileUpdated: 'Access control and user information updated',
     accessUpdated: 'Access control updated',
     failedUpdatePassword: 'Failed to update password',
     failedUpdate: 'Failed to update',
@@ -698,6 +790,7 @@ const ZH_HANT: AdminPagesTexts = {
     description: '管理使用者及其交易編輯與作廢權限',
     refresh: '重新整理',
     actionViewUser: '檢視使用者',
+    actionAddUser: '新增使用者',
     accessButton: '',
     colAccess: '存取',
     colUsername: '使用者名稱',
@@ -711,6 +804,42 @@ const ZH_HANT: AdminPagesTexts = {
     statusInactive: '停用',
     loading: '載入使用者中...',
     empty: '找不到使用者。',
+    add: '新增使用者',
+  },
+  userAdd: {
+    title: '新增使用者',
+    description: '建立新的員工帳號、登入憑證及預設存取權限',
+    back: '返回',
+    backToUsers: '返回使用者列表',
+    created: '使用者已成功建立',
+    failedCreate: '無法建立使用者',
+    passwordMismatch: '密碼不一致',
+    labelEmployeeCode: '員工編號',
+    labelUsername: '使用者名稱',
+    labelPassword: '密碼',
+    labelConfirmPassword: '確認密碼',
+    labelDefaultShop: '預設店舖',
+    labelRole: '角色',
+    labelStatus: '狀態',
+    phEmployeeCode: '輸入員工編號',
+    phUsername: '輸入使用者名稱',
+    phPassword: '輸入密碼（至少 6 個字元）',
+    phConfirmPassword: '再次輸入密碼',
+    phDefaultShop: '選擇預設店舖',
+    phRole: '選擇角色',
+    ruleEmployeeCode: '請輸入員工編號',
+    ruleUsername: '請輸入使用者名稱',
+    rulePassword: '請輸入密碼',
+    ruleConfirmPassword: '請確認密碼',
+    ruleDefaultShop: '請選擇預設店舖',
+    ruleRole: '請選擇角色',
+    rulePasswordMin: '密碼至少需要 6 個字元',
+    validatorPasswordMatch: '密碼不一致',
+    statusActive: '啟用',
+    statusInactive: '停用',
+    cardUserInfo: '使用者資料',
+    loadingOptions: '載入表單選項中...',
+    failedLoadOptions: '無法載入表單選項',
   },
   masterData: {
     title: '主資料匯入／匯出',
@@ -770,6 +899,13 @@ const ZH_HANT: AdminPagesTexts = {
     cardPassword: '變更密碼',
     cardPasswordHint:
       '可選擇為此使用者設定新密碼；留空則維持原密碼。請按上方儲存套用。',
+    cardUserInfo: '使用者資料',
+    cardUserInfoHint: '更新此使用者登入時使用的預設店舖。',
+    labelEmployeeCode: '員工編號',
+    labelUsername: '使用者名稱',
+    labelDefaultShop: '預設店舖',
+    phDefaultShop: '選擇預設店舖',
+    ruleDefaultShop: '請選擇預設店舖',
     labelNewPassword: '新密碼',
     labelConfirmPassword: '確認密碼',
     phNewPassword: '新密碼（選填）',
@@ -782,7 +918,9 @@ const ZH_HANT: AdminPagesTexts = {
     failedLoadUser: '無法載入使用者資料',
     passwordMismatch: '兩次密碼不一致',
     failedUpdateAccess: '無法更新存取控管',
+    failedUpdateProfile: '無法更新使用者資料',
     accessAndPasswordUpdated: '存取控管與密碼已更新',
+    accessAndProfileUpdated: '存取控管與使用者資料已更新',
     accessUpdated: '存取控管已更新',
     failedUpdatePassword: '無法更新密碼',
     failedUpdate: '無法更新',

@@ -8,8 +8,8 @@ import { getHubPagesTexts } from '@/lib/i18n/hubPages';
 import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Table, Button, message, Tag, Spin } from 'antd';
+import { EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Table, Button, message, Tag, Spin, Space } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 
@@ -59,6 +59,21 @@ export default function AdministrationUsersPage() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const messageText = params.get('message');
+    const type = params.get('type') as 'success' | 'error' | null;
+    if (messageText && type) {
+      if (type === 'success') message.success(messageText);
+      else message.error(messageText);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const handleAddUser = useCallback(() => {
+    router.push('/administration/users/add');
+  }, [router]);
 
   const columns = useMemo(
     () => [
@@ -127,10 +142,20 @@ export default function AdministrationUsersPage() {
   );
 
   const UsersButtonBar = (
-    <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
-      <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
-        {a.refresh}
-      </Button>
+    <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4">
+      <Space wrap>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          title={a.actionAddUser}
+          onClick={handleAddUser}
+        >
+          {a.add}
+        </Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
+          {a.refresh}
+        </Button>
+      </Space>
     </div>
   );
 

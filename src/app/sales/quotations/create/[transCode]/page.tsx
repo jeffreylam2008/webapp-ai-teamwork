@@ -24,7 +24,7 @@ import { getQuotationCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { formatCurrency } from '@/utils/formatCurrency';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
-import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
+import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import {
   CustomerTipsActionButton,
   CustomerTipsModal,
@@ -324,7 +324,7 @@ export default function CreateQuotationPage() {
     cleanSelectCustFromUrl();
   }, [searchParams, formData, transCode, form, router, t, refreshFormData]);
 
-  const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
+  const addLineItem = (product?: QuickItemProduct) => {
     if (!product) return;
 
     const itemCode = String(product.item_code ?? '').trim();

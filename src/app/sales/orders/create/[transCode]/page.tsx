@@ -23,7 +23,7 @@ import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getCommonLanguageTexts } from '@/lib/i18n/common';
 import { formatCurrency } from '@/utils/formatCurrency';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
-import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
+import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import {
   isOrderDraftTransCode,
   reserveOrderNumber,
@@ -181,7 +181,7 @@ export default function CreateOrderPage() {
     }
   };
 
-  const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
+  const addLineItem = (product?: QuickItemProduct) => {
     if (!product) return;
 
     const itemCode = String(product.item_code ?? '').trim();
@@ -211,7 +211,7 @@ export default function CreateOrderPage() {
           eng_name: product.eng_name,
           chi_name: product.chi_name,
           qty: 1,
-          unit: product.unit,
+          unit: String(product.unit ?? ''),
           price,
           discount: 0,
           line_total: calcLineTotal(1, price, 0),

@@ -22,7 +22,7 @@ import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { formatCurrency } from '@/utils/formatCurrency';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
-import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
+import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import {
   isMonthlyInvoiceSubtype,
   normalizeInvoiceSubtype,
@@ -270,7 +270,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
     }
   };
 
-  const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
+  const addLineItem = (product?: QuickItemProduct) => {
     if (!product) return;
 
     const itemCode = String(product.item_code ?? '').trim();

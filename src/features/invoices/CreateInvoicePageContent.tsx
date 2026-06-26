@@ -21,6 +21,8 @@ import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { formatCurrency } from '@/utils/formatCurrency';
+import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
+import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
 import {
   isMonthlyInvoiceSubtype,
   normalizeInvoiceSubtype,
@@ -28,6 +30,8 @@ import {
 import { MONTHLY_ITEM_CATEGORY_CODE } from '@/config/itemCategories';
 import {
   getInvoiceModuleConfig,
+  isInvoiceDraftTransCode,
+  reserveInvoiceNumber,
   type InvoiceModuleMode,
 } from '@/features/invoices/invoiceModule';
 
@@ -63,6 +67,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   const [form] = Form.useForm();
 
   const transCode = params?.transCode as string;
+  const isDraft = isInvoiceDraftTransCode(transCode);
   const invoiceSubtype = config.invoiceSubtype;
   const isMonthly = config.isMonthly;
 
@@ -70,6 +75,9 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   const [formData, setFormData] = useState<FormData | null>(null);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
   const [browserSessionId, setBrowserSessionId] = useState('');
+  const [reservedTransCode, setReservedTransCode] = useState('');
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [generatingNumber, setGeneratingNumber] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
@@ -92,12 +100,17 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
       return;
     }
 
-    const sessionId = sessionStorage.getItem(config.sessionKey) || '';
+    let sessionId = sessionStorage.getItem(config.sessionKey) || '';
+    if (!sessionId) {
+      const timestamp = Date.now().toString(36);
+      const randomStr = Math.random().toString(36).substring(2, 8);
+      sessionId = `browser_${timestamp}${randomStr}`;
+      sessionStorage.setItem(config.sessionKey, sessionId);
+    }
     setBrowserSessionId(sessionId);
     fetchFormData();
 
     form.setFieldsValue({
-      trans_code: transCode,
       prefix: 'INV',
       transaction_date: dayjs(),
       invoice_subtype: invoiceSubtype,
@@ -109,7 +122,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         : {}),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transCode, config.basePath, config.sessionKey, invoiceSubtype, isMonthly]);
+  }, [transCode, config.basePath, config.sessionKey, invoiceSubtype, isMonthly, isDraft]);
 
   useEffect(() => {
     if (formData && user) {
@@ -157,7 +170,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         invoice_subtype: normalizeInvoiceSubtype(h.invoice_subtype),
         billing_period_from: h.billing_period_from ? dayjs(String(h.billing_period_from)) : undefined,
         billing_period_to: h.billing_period_to ? dayjs(String(h.billing_period_to)) : undefined,
-        trans_code: transCode,
+        trans_code: isDraft ? undefined : transCode,
         prefix: 'INV',
         transaction_date: dayjs(),
       });
@@ -260,33 +273,40 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
     if (!product) return;
 
-    const existingIdx = lineItems.findIndex((item) => item.item_code === product.item_code);
-    if (existingIdx >= 0) {
-      const updated = [...lineItems];
-      const curr = updated[existingIdx];
-      const nextQty = curr.qty + 1;
-      const lineSubtotal = nextQty * curr.price;
-      const discountAmount = lineSubtotal * (curr.discount / 100);
-      updated[existingIdx] = { ...curr, qty: nextQty, line_total: lineSubtotal - discountAmount };
-      setLineItems(updated);
-      return;
-    }
+    const itemCode = String(product.item_code ?? '').trim();
+    if (!itemCode) return;
+    const codeKey = normalizeItemCode(itemCode);
 
-    const lineTotal = Number(product.price || 0);
-    setLineItems((prev) => [
-      ...prev,
-      {
-        uid: Date.now(),
-        item_code: product.item_code,
-        eng_name: String(product.eng_name ?? ''),
-        chi_name: String(product.chi_name ?? ''),
-        qty: 1,
-        unit: String(product.unit ?? ''),
-        price: Number(product.price || 0),
-        discount: 0,
-        line_total: lineTotal,
-      },
-    ]);
+    setLineItems((prev) => {
+      const existingIdx = prev.findIndex((item) => normalizeItemCode(item.item_code) === codeKey);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        const curr = updated[existingIdx];
+        const nextQty = curr.qty + 1;
+        updated[existingIdx] = {
+          ...curr,
+          qty: nextQty,
+          line_total: calcLineTotal(nextQty, curr.price, curr.discount),
+        };
+        return updated;
+      }
+
+      const price = Number(product.price || 0);
+      return [
+        ...prev,
+        {
+          uid: Date.now(),
+          item_code: itemCode,
+          eng_name: String(product.eng_name ?? ''),
+          chi_name: String(product.chi_name ?? ''),
+          qty: 1,
+          unit: String(product.unit ?? ''),
+          price,
+          discount: 0,
+          line_total: calcLineTotal(1, price, 0),
+        },
+      ];
+    });
   };
 
   const updateLineItem = (index: number, field: keyof InvoiceLineItem, value: string | number) => {
@@ -297,9 +317,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
       const qty = field === 'qty' ? (value as number) : next[index].qty;
       const price = field === 'price' ? (value as number) : next[index].price;
       const discount = field === 'discount' ? (value as number) : next[index].discount;
-      const lineSubtotal = qty * price;
-      const discountAmount = lineSubtotal * (discount / 100);
-      next[index].line_total = lineSubtotal - discountAmount;
+      next[index].line_total = calcLineTotal(qty, price, discount);
     }
 
     setLineItems(next);
@@ -308,6 +326,13 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   const removeLineItem = (index: number) => {
     setLineItems((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const invoiceProducts = useMemo(() => {
+    if (!formData?.products) return [];
+    return formData.products.filter(
+      (item) => !isMonthly || !item.cate_code || item.cate_code === MONTHLY_ITEM_CATEGORY_CODE
+    );
+  }, [formData?.products, isMonthly]);
 
   const filteredCustomers = useMemo(() => {
     if (!formData?.customers) return [];
@@ -323,19 +348,15 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   }, [formData?.customers, customerSearchText]);
 
   const filteredItems = useMemo(() => {
-    if (!formData?.products) return [];
     const searchLower = itemSearchText.toLowerCase();
-    return formData.products.filter((item) => {
-      if (isMonthly && item.cate_code && item.cate_code !== MONTHLY_ITEM_CATEGORY_CODE) {
-        return false;
-      }
+    return invoiceProducts.filter((item) => {
       return (
         String(item.item_code ?? '').toLowerCase().includes(searchLower) ||
         String(item.eng_name ?? '').toLowerCase().includes(searchLower) ||
         String(item.chi_name ?? '').toLowerCase().includes(searchLower)
       );
     });
-  }, [formData?.products, itemSearchText, isMonthly]);
+  }, [invoiceProducts, itemSearchText]);
 
   /** Retail / branch shops only — warehouse rows (`is_warehouse = 1`) use a separate concept elsewhere */
   const invoiceShopSelectOptions = useMemo(() => {
@@ -369,12 +390,56 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         return;
       }
 
-      const incomplete = lineItems.filter((item) => !item.item_code || item.qty <= 0 || item.price <= 0);
+      const incomplete = lineItems.filter((item) => {
+        if (!item.item_code || item.qty <= 0) return true;
+        if (isMonthly) {
+          return !Number.isFinite(item.price) || item.price < 0;
+        }
+        return item.price <= 0;
+      });
       if (incomplete.length > 0) {
-        messageApi.error(t.createPage.completeLineItems);
+        messageApi.error(
+          isMonthly ? t.createPage.completeLineItemsMonthly : t.createPage.completeLineItems
+        );
         return;
       }
 
+      if (isDraft) {
+        if (reservedTransCode) {
+          setShowSaveConfirmModal(true);
+          return;
+        }
+        setGeneratingNumber(true);
+        try {
+          const code = await reserveInvoiceNumber(browserSessionId);
+          setReservedTransCode(code);
+          setShowSaveConfirmModal(true);
+        } catch (error) {
+          messageApi.error(error instanceof Error ? error.message : t.createPage.failedCreate);
+        } finally {
+          setGeneratingNumber(false);
+        }
+        return;
+      }
+
+      await persistInvoice(transCode, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      messageApi.error(t.createPage.errorSave);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const persistInvoice = async (
+    saveCode: string,
+    formValues: Awaited<ReturnType<typeof form.validateFields>>
+  ) => {
+    try {
+      setSaving(true);
       const totalAmount = lineItems.reduce((sum, item) => sum + item.line_total, 0);
       const fv = formValues as Record<string, unknown>;
       const transactionDate = fv.transaction_date
@@ -400,7 +465,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         ...restHeader
       } = fv;
       const payload = {
-        transCode,
+        transCode: saveCode,
         headerData: {
           ...restHeader,
           prefix: 'INV',
@@ -413,7 +478,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
           is_settle: 0,
         },
         detailsData: lineItems.map((item) => ({
-          trans_code: transCode,
+          trans_code: saveCode,
           item_code: item.item_code,
           eng_name: item.eng_name,
           chi_name: item.chi_name,
@@ -446,17 +511,15 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         return;
       }
 
-      if (browserSessionId || transCode) {
-        await TransactionGenerator.commitTransaction(browserSessionId, transCode);
+      if (browserSessionId || saveCode) {
+        await TransactionGenerator.commitTransaction(browserSessionId, saveCode);
       }
 
+      setShowSaveConfirmModal(false);
       messageApi.success(t.createPage.createdSuccess);
       allowNavigationRef.current = true;
       router.push(config.basePath);
     } catch (error) {
-      if (error && typeof error === 'object' && 'errorFields' in error) {
-        return;
-      }
       console.error(error);
       messageApi.error(t.createPage.errorSave);
     } finally {
@@ -464,9 +527,27 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
     }
   };
 
+  const handleConfirmSaveWithNumber = async () => {
+    const code = isDraft ? reservedTransCode : transCode;
+    if (!code) return;
+    try {
+      const formValues = await form.validateFields();
+      await persistInvoice(code, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      messageApi.error(t.createPage.errorSave);
+    }
+  };
+
   const handleConfirmDiscard = async () => {
     try {
-      await TransactionGenerator.discardTransaction(browserSessionId, transCode);
+      const codeToDiscard = isDraft ? reservedTransCode : transCode;
+      if (codeToDiscard) {
+        await TransactionGenerator.discardTransaction(browserSessionId, codeToDiscard);
+      }
       sessionStorage.removeItem(config.sessionKey);
       messageApi.success(t.createPage.discardedSuccess);
       setShowDiscardModal(false);
@@ -485,7 +566,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
       <Button icon={<ArrowLeftOutlined />} onClick={requestBackOrDiscard}>
         {t.createPage.back}
       </Button>
-      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving}>
+      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving || generatingNumber}>
         {saveWithShortcutLabel(lang)}
       </Button>
       <Button icon={<StopOutlined />} danger onClick={() => setShowDiscardModal(true)} disabled={saving}>
@@ -527,6 +608,15 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
     );
   }
 
+  const pageTitle = isDraft
+    ? isMonthly
+      ? t.createPage.monthlyTitle
+      : t.createPage.title
+    : isMonthly
+      ? `${t.createPage.monthlyTitle}: ${transCode}`
+      : `${t.createPage.title}: ${transCode}`;
+  const displayTransCode = isDraft ? reservedTransCode : transCode;
+
   return (
     <BasicPageLayout
       breadcrumb={
@@ -534,23 +624,28 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
           items={[
             { label: t.breadcrumb.home, href: '/' },
             { label: t.breadcrumb.sales, href: '/sales' },
-            { label: t.breadcrumb.invoices, href: '/sales/invoices' },
+            { label: t.breadcrumb[config.breadcrumbKey], href: config.basePath },
             { label: t.breadcrumb.create, current: true },
           ]}
         />
       }
       buttonBar={functionBar}
-      title={isMonthly ? `${t.createPage.monthlyTitle}: ${transCode}` : `${t.createPage.title}: ${transCode}`}
+      title={pageTitle}
       description={isMonthly ? t.createPage.monthlyDescription : t.createPage.description}
-      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving }}
+      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || generatingNumber }}
     >
       <div className="px-8 py-6 bg-white" style={{ textAlign: 'left' }}>
         <Form form={form} layout="horizontal" labelCol={{ span: 8, style: { textAlign: 'left' } }} wrapperCol={{ span: 16, style: { textAlign: 'left' } }} className="space-y-6">
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={12}>
               <Card title={t.createPage.invoiceInfo} size="small">
-                <Form.Item label={t.detailLabels.invoiceNumber} name="trans_code">
-                  <Input disabled style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }} />
+                <Form.Item label={t.detailLabels.invoiceNumber}>
+                  <Input
+                    disabled
+                    value={displayTransCode}
+                    placeholder={isDraft && !displayTransCode ? t.createPage.assignedOnSave : undefined}
+                    style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
+                  />
                 </Form.Item>
 
                 <Form.Item label={t.createPage.invoiceDate} name="transaction_date" rules={[{ required: true, message: t.createPage.invoiceDateRequired }]}>
@@ -645,9 +740,17 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
                 title={t.createPage.lineItemsTitle}
                 size="small"
                 extra={
-                  <Button type="primary" icon={<SearchOutlined />} onClick={() => setShowItemModal(true)}>
-                    {t.createPage.items}
-                  </Button>
+                  <QuickItemCodeSearchBar
+                    products={invoiceProducts}
+                    placeholder={t.createPage.quickItemCodePlaceholder}
+                    itemsButtonLabel={t.createPage.items}
+                    productsAvailable={Boolean(formData?.products)}
+                    formDataUnavailableMessage={t.createPage.failedFormData}
+                    itemNotFoundMessage={t.createPage.itemNotFound}
+                    onAdd={addLineItem}
+                    onOpenItemModal={() => setShowItemModal(true)}
+                    onError={(msg) => messageApi.error(msg)}
+                  />
                 }
               >
                 {lineItems.length === 0 ? (
@@ -710,6 +813,26 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
       </div>
 
       <Modal
+        title={t.createPage.saveConfirmTitle}
+        open={showSaveConfirmModal}
+        onOk={() => void handleConfirmSaveWithNumber()}
+        onCancel={() => setShowSaveConfirmModal(false)}
+        okText={t.createPage.saveConfirmOk}
+        cancelText={t.createPage.saveConfirmCancel}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: !reservedTransCode }}
+      >
+        <p>{reservedTransCode ? t.createPage.saveConfirmBody(reservedTransCode) : t.createPage.generatingNumber}</p>
+        {reservedTransCode && (
+          <Input
+            value={reservedTransCode}
+            disabled
+            style={{ marginTop: 12, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600 }}
+          />
+        )}
+      </Modal>
+
+      <Modal
         title={t.createPage.discardModalTitle}
         open={showDiscardModal}
         onOk={handleConfirmDiscard}
@@ -720,7 +843,13 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
       >
         <p>{t.createPage.discardLine1}</p>
         <p>
-          {t.createPage.discardLine2} <strong>{transCode}</strong>
+          {isDraft && !reservedTransCode ? (
+            t.createPage.discardLine2Draft
+          ) : (
+            <>
+              {t.createPage.discardLine2} <strong>{displayTransCode}</strong>
+            </>
+          )}
         </p>
       </Modal>
 

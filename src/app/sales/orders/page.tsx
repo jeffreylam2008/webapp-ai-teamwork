@@ -16,11 +16,9 @@ import {
 } from '@ant-design/icons';
 import {
   createInvoiceFromSalesOrder,
-  getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
-import { Modal, Table, Button, DatePicker, Space, Form, Input, App, Tooltip, Spin } from 'antd';
+import { Modal, Table, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
 import { Dayjs } from 'dayjs';
-import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
@@ -29,6 +27,7 @@ import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSalesOrderTexts } from './i18n';
+import { orderDraftCreatePath } from '@/features/orders/orderModule';
 
 interface OrderTransaction {
   uid: number;
@@ -49,14 +48,6 @@ interface OrderTransaction {
   quotation_code?: string;
   payment_method?: string;
   customer_phone?: string;
-}
-
-interface TransactionGeneratorResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-  transactionCode?: string;
-  lastNumber?: number;
 }
 
 export default function OrdersPage() {
@@ -83,12 +74,6 @@ export default function OrdersPage() {
     hasPrev: false
   });
   
-  // Transaction generation states
-  const [browserSessionId, setBrowserSessionId] = useState<string>('');
-  const [transactionSession, setTransactionSession] = useState<TransactionGeneratorResponse | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [form] = Form.useForm();
   const [showFilters, setShowFilters] = useState(false);
   const [pageMessage, setPageMessage] = useState<{ type: 'success' | 'error' | null; text: string | null }>({
     type: null,
@@ -113,7 +98,6 @@ export default function OrdersPage() {
           existingSessionId = generateBrowserSessionId();
           sessionStorage.setItem('order_session_id', existingSessionId);
         }
-        setBrowserSessionId(existingSessionId);
       } catch (error) {
         console.error('Error initializing order browser session:', error);
       }
@@ -193,89 +177,8 @@ export default function OrdersPage() {
     fetchTransactions(1, pagination.pageSize);
   };
 
-  const generateOrderNumber = async () => {
-    setIsGenerating(true);
-    try {
-      const suffix = getCurrentSuffix();
-      const response = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix: 'SO', suffix, sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        setTransactionSession({
-          success: result.success,
-          transactionCode: result.transactionCode,
-          lastNumber: result.lastNumber,
-          message: result.message
-        });
-        form.setFieldsValue({ order_number: result.transactionCode });
-        messageApi.success(result.message || t.prompts.generatedNumber);
-      } else {
-        messageApi.error(result.error || t.prompts.failedGenerate);
-      }
-    } catch (error) {
-      console.error('Error generating Sales Order number:', error);
-      messageApi.error(t.prompts.errorGenerate);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleModalOpen = () => {
-    setShowGenerateModal(true);
-    setTimeout(() => generateOrderNumber(), 100);
-  };
-
-  const handleCommitTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        messageApi.success(t.prompts.committed);
-        if (transactionSession?.transactionCode) {
-          setTransactionSession(null);
-          form.resetFields();
-          setShowGenerateModal(false);
-          router.push(`/sales/orders/create/${encodeURIComponent(transactionSession.transactionCode)}`);
-        } else {
-          fetchTransactions();
-        }
-      } else {
-        messageApi.error(result.error || t.prompts.failedCommit);
-      }
-    } catch (error) {
-      console.error('Error committing transaction:', error);
-      messageApi.error(t.prompts.errorCommit);
-    }
-  };
-
-  const handleDiscardTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/discard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        messageApi.success(t.prompts.discarded);
-        setTransactionSession(null);
-        form.resetFields();
-        setShowGenerateModal(false);
-        fetchTransactions();
-      } else {
-        messageApi.error(result.error || t.prompts.failedDiscard);
-      }
-    } catch (error) {
-      console.error('Error discarding transaction:', error);
-      messageApi.error(t.prompts.errorDiscard);
-    }
+  const handleCreateOrder = () => {
+    router.push(orderDraftCreatePath());
   };
 
   const handleConfirmSalesOrder = useCallback(
@@ -371,18 +274,12 @@ export default function OrdersPage() {
         return;
       }
       if (!can('create_invoice')) return;
-      const sessionId = getOrCreateInvoiceBrowserSessionId();
-      if (!sessionId) {
-        messageApi.error(t.prompts.invoiceSessionNotReady);
-        return;
-      }
       setCreatingInvoiceId(record.uid);
       messageApi.loading({ content: t.prompts.createInvoiceStarted, key: 'createInvoiceFromSo', duration: 0 });
       try {
         const newCode = await createInvoiceFromSalesOrder({
           salesOrderCode: transCode,
           token,
-          browserSessionId: sessionId,
         });
         messageApi.destroy('createInvoiceFromSo');
         router.push(`/sales/invoices/create/${encodeURIComponent(newCode)}`);
@@ -631,7 +528,7 @@ export default function OrdersPage() {
   const OrdersButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
       {can('create_sales_order') && (
-      <Button icon={<PlusOutlined />} type="primary" onClick={handleModalOpen}>
+      <Button icon={<PlusOutlined />} type="primary" onClick={handleCreateOrder}>
         {t.listPage.generate}
       </Button>
       )}
@@ -757,37 +654,6 @@ export default function OrdersPage() {
       </Spin>
       </>
       )}
-
-      <Modal
-        title={t.generateModal.title}
-        open={showGenerateModal}
-        onCancel={() => {}}
-        closable={false}
-        maskClosable={false}
-        footer={[
-          <Button key="discard" danger onClick={handleDiscardTransaction} disabled={!transactionSession}>{t.generateModal.discard}</Button>,
-          <Button key="create" type="primary" onClick={handleCommitTransaction} disabled={!transactionSession}>{t.generateModal.createOrder}</Button>
-        ]}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="order_number" rules={[{ required: true, message: t.generateModal.requiredGenerate }]}>
-            <Input placeholder={isGenerating ? t.generateModal.generatingPlaceholder : t.generateModal.generatedPlaceholder} disabled style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }} />
-          </Form.Item>
-          {isGenerating && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <span className="text-yellow-600 font-medium">{t.generateModal.generating}</span>
-              <p className="text-sm text-yellow-700 mt-1">{t.generateModal.pleaseWait}</p>
-            </div>
-          )}
-          {transactionSession && !isGenerating && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-              <CheckCircleOutlined className="text-green-600 text-lg" />
-              <span className="text-sm text-green-700 font-medium">{t.generateModal.generatedSuccessful}</span>
-            </div>
-          )}
-        </Form>
-      </Modal>
     </BasicPageLayout>
   );
 }

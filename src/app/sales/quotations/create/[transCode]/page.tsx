@@ -23,12 +23,22 @@ import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getQuotationCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { formatCurrency } from '@/utils/formatCurrency';
+import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
+import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
 import {
   CustomerTipsActionButton,
   CustomerTipsModal,
   getCustomerTipsTexts,
   useCustomerTipsToggle,
 } from '@/customizations/quotations/customer-tips';
+import {
+  isQuotationDraftTransCode,
+  reserveQuotationNumber,
+  QUOTATION_SESSION_KEY,
+  QUOTATION_CLONE_KEY_PREFIX,
+  QUOTATION_BASE_PATH,
+} from '@/features/quotations/quotationModule';
+import { ensureBrowserSessionId } from '@/lib/transactionDraft';
 
 interface QuotationLineItem {
   uid: number;
@@ -52,11 +62,15 @@ export default function CreateQuotationPage() {
   const [form] = Form.useForm();
 
   const transCode = params?.transCode as string;
+  const isDraft = isQuotationDraftTransCode(transCode);
 
   const [saving, setSaving] = useState(false);
   const { formData, error: formDataError, refresh: refreshFormData } = useTransactionFormData(token);
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>([]);
   const [browserSessionId, setBrowserSessionId] = useState('');
+  const [reservedTransCode, setReservedTransCode] = useState('');
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [generatingNumber, setGeneratingNumber] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
@@ -97,17 +111,17 @@ export default function CreateQuotationPage() {
       return;
     }
 
-    const sessionId = sessionStorage.getItem('quotation_session_id') || '';
+    const sessionId = ensureBrowserSessionId(QUOTATION_SESSION_KEY);
     setBrowserSessionId(sessionId);
 
     form.setFieldsValue({
-      trans_code: transCode,
+      ...(isDraft ? {} : { trans_code: transCode }),
       prefix: 'QTA',
       transaction_date: dayjs(),
       valid_until_date: dayjs().add(30, 'day'),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transCode]);
+  }, [transCode, isDraft]);
 
   useEffect(() => {
     if (formData && user) {
@@ -133,7 +147,7 @@ export default function CreateQuotationPage() {
 
   useEffect(() => {
     if (!transCode || !formData) return;
-    const key = `quotation_clone_${transCode}`;
+    const key = `${QUOTATION_CLONE_KEY_PREFIX}${transCode}`;
     const raw = sessionStorage.getItem(key);
     if (!raw) return;
     try {
@@ -313,45 +327,49 @@ export default function CreateQuotationPage() {
   const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
     if (!product) return;
 
-    const catalogProduct = formData?.products?.find((p) => p.item_code === product.item_code);
-    const resolvedPrice =
-      Number(product.price || 0) > 0
-        ? Number(product.price)
-        : Number(catalogProduct?.price || 0);
+    const itemCode = String(product.item_code ?? '').trim();
+    if (!itemCode) return;
+    const codeKey = normalizeItemCode(itemCode);
 
-    const existingIdx = lineItems.findIndex((item) => item.item_code === product.item_code);
-    if (existingIdx >= 0) {
-      const updated = [...lineItems];
-      const curr = updated[existingIdx];
-      const nextQty = curr.qty + 1;
-      const unitPrice = curr.price > 0 ? curr.price : resolvedPrice;
-      const lineSubtotal = nextQty * unitPrice;
-      const discountAmount = lineSubtotal * (curr.discount / 100);
-      updated[existingIdx] = {
-        ...curr,
-        qty: nextQty,
-        price: unitPrice,
-        line_total: lineSubtotal - discountAmount,
-      };
-      setLineItems(updated);
-      return;
-    }
+    setLineItems((prev) => {
+      const catalogProduct = formData?.products?.find(
+        (p) => normalizeItemCode(p.item_code) === codeKey
+      );
+      const resolvedPrice =
+        Number(product.price || 0) > 0
+          ? Number(product.price)
+          : Number(catalogProduct?.price || 0);
 
-    const lineTotal = resolvedPrice;
-    setLineItems((prev) => [
-      ...prev,
-      {
-        uid: Date.now(),
-        item_code: product.item_code,
-        eng_name: product.eng_name,
-        chi_name: product.chi_name,
-        qty: 1,
-        unit: product.unit || catalogProduct?.unit || '',
-        price: resolvedPrice,
-        discount: 0,
-        line_total: lineTotal,
-      },
-    ]);
+      const existingIdx = prev.findIndex((item) => normalizeItemCode(item.item_code) === codeKey);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        const curr = updated[existingIdx];
+        const nextQty = curr.qty + 1;
+        const unitPrice = curr.price > 0 ? curr.price : resolvedPrice;
+        updated[existingIdx] = {
+          ...curr,
+          qty: nextQty,
+          price: unitPrice,
+          line_total: calcLineTotal(nextQty, unitPrice, curr.discount),
+        };
+        return updated;
+      }
+
+      return [
+        ...prev,
+        {
+          uid: Date.now(),
+          item_code: itemCode,
+          eng_name: product.eng_name,
+          chi_name: product.chi_name,
+          qty: 1,
+          unit: product.unit || catalogProduct?.unit || '',
+          price: resolvedPrice,
+          discount: 0,
+          line_total: calcLineTotal(1, resolvedPrice, 0),
+        },
+      ];
+    });
   };
 
   const updateLineItem = (index: number, field: keyof QuotationLineItem, value: string | number) => {
@@ -362,9 +380,7 @@ export default function CreateQuotationPage() {
       const qty = field === 'qty' ? (value as number) : next[index].qty;
       const price = field === 'price' ? (value as number) : next[index].price;
       const discount = field === 'discount' ? (value as number) : next[index].discount;
-      const lineSubtotal = qty * price;
-      const discountAmount = lineSubtotal * (discount / 100);
-      next[index].line_total = lineSubtotal - discountAmount;
+      next[index].line_total = calcLineTotal(qty, price, discount);
     }
 
     setLineItems(next);
@@ -432,6 +448,42 @@ export default function CreateQuotationPage() {
         return;
       }
 
+      if (isDraft) {
+        if (reservedTransCode) {
+          setShowSaveConfirmModal(true);
+          return;
+        }
+        setGeneratingNumber(true);
+        try {
+          const code = await reserveQuotationNumber(browserSessionId);
+          setReservedTransCode(code);
+          setShowSaveConfirmModal(true);
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : t.createPage.failedCreate);
+        } finally {
+          setGeneratingNumber(false);
+        }
+        return;
+      }
+
+      await persistQuotation(transCode, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      message.error(t.createPage.errorSave);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const persistQuotation = async (
+    saveCode: string,
+    formValues: Awaited<ReturnType<typeof form.validateFields>>
+  ) => {
+    try {
+      setSaving(true);
       const totalAmount = lineItems.reduce((sum, item) => sum + item.line_total, 0);
       const fv = formValues as Record<string, unknown>;
       const transactionDate = fv.transaction_date
@@ -448,7 +500,7 @@ export default function CreateQuotationPage() {
       const { transaction_date: _tx, valid_until_date: _vu, ...restHeader } = fv;
 
       const payload = {
-        transCode,
+        transCode: saveCode,
         headerData: {
           ...restHeader,
           prefix: 'QTA',
@@ -459,7 +511,7 @@ export default function CreateQuotationPage() {
           is_settle: 0,
         },
         detailsData: lineItems.map((item) => ({
-          trans_code: transCode,
+          trans_code: saveCode,
           item_code: item.item_code,
           eng_name: item.eng_name,
           chi_name: item.chi_name,
@@ -492,13 +544,14 @@ export default function CreateQuotationPage() {
         return;
       }
 
-      if (browserSessionId || transCode) {
-        await TransactionGenerator.commitTransaction(browserSessionId, transCode);
+      if (browserSessionId || saveCode) {
+        await TransactionGenerator.commitTransaction(browserSessionId, saveCode);
       }
 
+      setShowSaveConfirmModal(false);
       message.success(t.createPage.createdSuccess);
       allowNavigationRef.current = true;
-      router.push('/sales/quotations');
+      router.push(QUOTATION_BASE_PATH);
     } catch (error) {
       console.error(error);
       message.error(t.createPage.errorSave);
@@ -507,12 +560,30 @@ export default function CreateQuotationPage() {
     }
   };
 
+  const handleConfirmSaveWithNumber = async () => {
+    const code = isDraft ? reservedTransCode : transCode;
+    if (!code) return;
+    try {
+      const formValues = await form.validateFields();
+      await persistQuotation(code, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      message.error(t.createPage.errorSave);
+    }
+  };
+
   const handleConfirmDiscard = async () => {
     try {
-      await TransactionGenerator.discardTransaction(browserSessionId, transCode);
-      sessionStorage.removeItem('quotation_session_id');
+      const codeToDiscard = isDraft ? reservedTransCode : transCode;
+      if (codeToDiscard) {
+        await TransactionGenerator.discardTransaction(browserSessionId, codeToDiscard);
+      }
+      sessionStorage.removeItem(QUOTATION_SESSION_KEY);
       setShowDiscardModal(false);
-      const target = pendingNavigateRef.current || '/sales/quotations';
+      const target = pendingNavigateRef.current || QUOTATION_BASE_PATH;
       pendingNavigateRef.current = null;
       allowNavigationRef.current = true;
       router.push(target);
@@ -527,7 +598,7 @@ export default function CreateQuotationPage() {
       <Button icon={<ArrowLeftOutlined />} onClick={requestBackOrDiscard}>
         {t.createPage.back}
       </Button>
-      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving}>
+      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving || generatingNumber}>
         {saveWithShortcutLabel(lang)}
       </Button>
       <CustomerTipsActionButton active={tipsOpen} onClick={handleOpenTips} lang={lang} disabled={saving} />
@@ -576,6 +647,9 @@ export default function CreateQuotationPage() {
     );
   }
 
+  const pageTitle = isDraft ? t.createPage.title : `${t.createPage.title}: ${transCode}`;
+  const displayTransCode = isDraft ? reservedTransCode : transCode;
+
   return (
     <BasicPageLayout
       breadcrumb={
@@ -589,17 +663,22 @@ export default function CreateQuotationPage() {
         />
       }
       buttonBar={functionBar}
-      title={`${t.createPage.title}: ${transCode}`}
+      title={pageTitle}
       description={t.createPage.description}
-      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving }}
+      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || generatingNumber }}
     >
       <div className="px-8 py-6 bg-white" style={{ textAlign: 'left' }}>
         <Form form={form} layout="horizontal" labelCol={{ span: 8, style: { textAlign: 'left' } }} wrapperCol={{ span: 16, style: { textAlign: 'left' } }} className="space-y-6">
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={12}>
               <Card title={t.createPage.quotationInfo} size="small">
-                <Form.Item label={t.detailLabels.quotationNumber} name="trans_code">
-                  <Input disabled style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }} />
+                <Form.Item label={t.detailLabels.quotationNumber}>
+                  <Input
+                    disabled
+                    value={displayTransCode}
+                    placeholder={isDraft && !displayTransCode ? t.createPage.assignedOnSave : undefined}
+                    style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
+                  />
                 </Form.Item>
 
                 <Form.Item label={t.createPage.quotationDate} name="transaction_date" rules={[{ required: true, message: t.createPage.quotationDateRequired }]}>
@@ -681,9 +760,17 @@ export default function CreateQuotationPage() {
                 title={t.createPage.lineItemsTitle}
                 size="small"
                 extra={
-                  <Button type="primary" icon={<SearchOutlined />} onClick={() => setShowItemModal(true)}>
-                    {t.createPage.items}
-                  </Button>
+                  <QuickItemCodeSearchBar
+                    products={formData?.products || []}
+                    placeholder={t.createPage.quickItemCodePlaceholder}
+                    itemsButtonLabel={t.createPage.items}
+                    productsAvailable={Boolean(formData?.products)}
+                    formDataUnavailableMessage={t.createPage.failedFormData}
+                    itemNotFoundMessage={t.createPage.itemNotFound}
+                    onAdd={addLineItem}
+                    onOpenItemModal={() => setShowItemModal(true)}
+                    onError={(msg) => message.error(msg)}
+                  />
                 }
               >
                 {lineItems.length === 0 ? (
@@ -764,6 +851,26 @@ export default function CreateQuotationPage() {
       </div>
 
       <Modal
+        title={t.createPage.saveConfirmTitle}
+        open={showSaveConfirmModal}
+        onOk={() => void handleConfirmSaveWithNumber()}
+        onCancel={() => setShowSaveConfirmModal(false)}
+        okText={t.createPage.saveConfirmOk}
+        cancelText={t.createPage.saveConfirmCancel}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: !reservedTransCode }}
+      >
+        <p>{reservedTransCode ? t.createPage.saveConfirmBody(reservedTransCode) : t.createPage.generatingNumber}</p>
+        {reservedTransCode && (
+          <Input
+            value={reservedTransCode}
+            disabled
+            style={{ marginTop: 12, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600 }}
+          />
+        )}
+      </Modal>
+
+      <Modal
         title={t.createPage.discardModalTitle}
         open={showDiscardModal}
         onOk={handleConfirmDiscard}
@@ -774,7 +881,13 @@ export default function CreateQuotationPage() {
       >
         <p>{t.createPage.discardLine1}</p>
         <p>
-          {t.createPage.discardLine2} <strong>{transCode}</strong>
+          {isDraft && !reservedTransCode ? (
+            t.createPage.discardLine2Draft
+          ) : (
+            <>
+              {t.createPage.discardLine2} <strong>{displayTransCode}</strong>
+            </>
+          )}
         </p>
       </Modal>
 

@@ -3,10 +3,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { EyeOutlined, PlusOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, FileSyncOutlined, CheckCircleOutlined, ExclamationCircleOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons';
-import { Modal, message, Table, Button, DatePicker, Space, Form, Input, App, Tooltip, Spin } from 'antd';
+import { EyeOutlined, PlusOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, FileSyncOutlined, ExclamationCircleOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons';
+import { Modal, message, Table, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
 import { Dayjs } from 'dayjs';
-import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +14,11 @@ import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getQuotationTexts } from './i18n';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  quotationDraftCreatePath,
+  QUOTATION_CLONE_KEY_PREFIX,
+  TRANSACTION_DRAFT_TRANS_CODE,
+} from '@/features/quotations/quotationModule';
 
 interface QuotationTransaction {
   uid: number;
@@ -37,14 +41,6 @@ interface QuotationTransaction {
   customer_phone?: string;
   /** 1 when converted to SO — deletion not allowed */
   is_convert?: number;
-}
-
-interface TransactionGeneratorResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-  transactionCode?: string;
-  lastNumber?: number;
 }
 
 export default function QuotationsPage() {
@@ -71,41 +67,25 @@ export default function QuotationsPage() {
     hasPrev: false
   });
   
-  // Transaction generation states
-  const [browserSessionId, setBrowserSessionId] = useState<string>('');
-  const [transactionSession, setTransactionSession] = useState<TransactionGeneratorResponse | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [form] = Form.useForm();
-
   // Refs for mount + filter change tracking
   const hasInitialFetch = useRef(false);
   const isMounted = useRef(false);
   const prevDateRange = useRef<[Dayjs | null, Dayjs | null]>([null, null]);
   const prevSearchText = useRef<string>('');
 
-  // Initialize browser session ID (fixed for this browser)
+  // Browser session for create flows
   useEffect(() => {
     const initializeBrowserSession = () => {
       try {
-        // Check if we already have a session ID in sessionStorage
         let existingSessionId = sessionStorage.getItem('quotation_session_id');
-        
         if (!existingSessionId) {
-          // Generate new browser session ID
           existingSessionId = generateBrowserSessionId();
           sessionStorage.setItem('quotation_session_id', existingSessionId);
-          console.log('Generated new quotation browser session ID:', existingSessionId);
-        } else {
-          console.log('Using existing quotation browser session ID:', existingSessionId);
         }
-        
-        setBrowserSessionId(existingSessionId);
       } catch (error) {
         console.error('Error initializing quotation browser session:', error);
       }
     };
-
     initializeBrowserSession();
   }, []);
 
@@ -231,120 +211,8 @@ export default function QuotationsPage() {
     fetchTransactions(1, pagination.pageSize);
   };
 
-  // Generate new quotation transaction number (auto-generate when modal opens)
-  const generateQuotationNumber = async () => {
-    setIsGenerating(true);
-    try {
-      const suffix = getCurrentSuffix();
-      const response = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prefix: 'QTA',
-          suffix: suffix,
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setTransactionSession({
-          success: result.success,
-          transactionCode: result.transactionCode,
-          lastNumber: result.lastNumber,
-          message: result.message
-        });
-        form.setFieldsValue({
-          quotation_number: result.transactionCode
-        });
-        message.success(result.message || t.prompts.generatedNumberSuccess);
-      } else {
-        message.error(result.error || t.prompts.failedGenerateNumber);
-      }
-    } catch (error) {
-      console.error('Error generating quotation number:', error);
-      message.error(t.prompts.errorGenerateNumber);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Auto-generate number when modal opens
-  const handleModalOpen = () => {
-    setShowGenerateModal(true);
-    // Auto-generate the number when modal opens
-    setTimeout(() => {
-      generateQuotationNumber();
-    }, 100);
-  };
-
-  // Commit transaction
-  const handleCommitTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        message.success(t.prompts.commitSuccess);
-        
-        // Redirect to create page with the generated transaction code
-        if (transactionSession?.transactionCode) {
-          setTransactionSession(null);
-          form.resetFields();
-          setShowGenerateModal(false);
-          router.push(`/sales/quotations/create/${encodeURIComponent(transactionSession.transactionCode)}`);
-        } else {
-          fetchTransactions(); // {t.listPage.refresh} the list
-        }
-      } else {
-        message.error(result.error || t.prompts.failedCommit);
-      }
-    } catch (error) {
-      console.error('Error committing transaction:', error);
-      message.error(t.prompts.errorCommit);
-    }
-  };
-
-  // Discard transaction
-  const handleDiscardTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/discard', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        message.success(t.prompts.discardSuccess);
-        setTransactionSession(null);
-        form.resetFields();
-        setShowGenerateModal(false);
-        fetchTransactions(); // {t.listPage.refresh} the list
-      } else {
-        message.error(result.error || t.prompts.failedDiscard);
-      }
-    } catch (error) {
-      console.error('Error discarding transaction:', error);
-      message.error(t.prompts.errorDiscard);
-    }
+  const handleCreateQuotation = () => {
+    router.push(quotationDraftCreatePath());
   };
 
   // Define the columns we want to display
@@ -573,10 +441,6 @@ export default function QuotationsPage() {
       message.error(t.prompts.invalidQuotationId);
       return;
     }
-    if (!browserSessionId) {
-      message.error(t.prompts.errorClone);
-      return;
-    }
 
     setCloningId(quotationId);
     message.loading({ content: t.prompts.cloneStarted, key: 'cloneQuotation', duration: 0 });
@@ -594,18 +458,6 @@ export default function QuotationsPage() {
       const sourceDetails = Array.isArray(sourceJson.details) ? sourceJson.details : [];
       const sourcePaymentTotals = Array.isArray(sourceJson.paymentTotals) ? sourceJson.paymentTotals : [];
       const pm_code = sourcePaymentTotals?.[0]?.pm_code;
-
-      const suffix = getCurrentSuffix();
-      const nextRes = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix: 'QTA', suffix, sessionId: browserSessionId }),
-      });
-      const nextJson = (await nextRes.json()) as { success: boolean; transactionCode?: string; error?: string };
-      if (!nextJson.success || !nextJson.transactionCode) {
-        throw new Error(nextJson.error || t.prompts.failedGenerateNumber);
-      }
-      const newCode = nextJson.transactionCode;
 
       const clonePayload = {
         sourceTransCode: quotationId,
@@ -629,20 +481,13 @@ export default function QuotationsPage() {
           discount: Number(d.discount || 0),
         })),
       };
-      sessionStorage.setItem(`quotation_clone_${newCode}`, JSON.stringify(clonePayload));
-
-      const commitRes = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const commitJson = (await commitRes.json()) as { success: boolean; error?: string };
-      if (!commitJson.success) {
-        throw new Error(commitJson.error || t.prompts.failedCommit);
-      }
+      sessionStorage.setItem(
+        `${QUOTATION_CLONE_KEY_PREFIX}${TRANSACTION_DRAFT_TRANS_CODE}`,
+        JSON.stringify(clonePayload)
+      );
 
       message.destroy('cloneQuotation');
-      router.push(`/sales/quotations/create/${encodeURIComponent(newCode)}`);
+      router.push(quotationDraftCreatePath());
     } catch (err) {
       console.error('Error cloning quotation:', err);
       message.destroy('cloneQuotation');
@@ -766,7 +611,7 @@ export default function QuotationsPage() {
       <Button 
         icon={<PlusOutlined />}
         type="primary"
-        onClick={handleModalOpen}
+        onClick={handleCreateQuotation}
       >
         {t.listPage.generate}
       </Button>
@@ -954,65 +799,6 @@ export default function QuotationsPage() {
       </Spin>
       </>
       )}
-
-      {/* {t.listPage.generate} Modal */}
-      <Modal
-        title={t.generateModal.title}
-        open={showGenerateModal}
-        onCancel={() => {}}
-        closable={false}
-        maskClosable={false}
-        footer={[
-          <Button
-            key="discard"
-            danger
-            onClick={handleDiscardTransaction}
-            disabled={!transactionSession}
-          >
-            {t.generateModal.discard}
-          </Button>,
-          <Button
-            key="create"
-            type="primary"
-            onClick={handleCommitTransaction}
-            disabled={!transactionSession}
-          >
-            {t.generateModal.createQuotation}
-          </Button>
-        ]}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="quotation_number"
-            rules={[{ required: true, message: t.generateModal.requiredGenerate }]}
-          >
-            <Input
-              placeholder={isGenerating ? t.generateModal.generatingPlaceholder : t.generateModal.generatedPlaceholder}
-              disabled={true}
-              style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
-            />
-          </Form.Item>
-
-          {isGenerating && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <div className="flex items-center">
-                <span className="text-yellow-600 font-medium">{t.generateModal.generating}</span>
-              </div>
-              <p className="text-sm text-yellow-700 mt-1">
-                {t.generateModal.pleaseWait}
-              </p>
-            </div>
-          )}
-
-          {transactionSession && !isGenerating && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-              <CheckCircleOutlined className="text-green-600 text-lg" />
-              <span className="text-sm text-green-700 font-medium">{t.generateModal.generatedSuccessful}</span>
-            </div>
-          )}
-        </Form>
-      </Modal>
     </BasicPageLayout>
   );
 }

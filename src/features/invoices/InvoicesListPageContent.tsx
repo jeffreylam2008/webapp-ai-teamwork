@@ -10,17 +10,16 @@ import {
   ReloadOutlined,
   FilterOutlined,
   EyeOutlined,
-  CheckCircleOutlined,
   CloseCircleOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
-import { App, Modal, Table, Button, DatePicker, Space, Form, Input, Tooltip, Spin } from 'antd';
+import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin } from 'antd';
 import { Dayjs } from 'dayjs';
-import { getCurrentSuffix } from '@/utils/transactionUtils';
 import {
   getInvoiceModuleConfig,
-  invoiceCreatePath,
+  INVOICE_DRAFT_TRANS_CODE,
   invoiceDetailPath,
+  invoiceDraftCreatePath,
   type InvoiceModuleMode,
 } from '@/features/invoices/invoiceModule';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
@@ -56,22 +55,14 @@ interface InvoiceTransaction {
   billing_period_to?: string;
 }
 
-interface TransactionGeneratorResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-  transactionCode?: string;
-  lastNumber?: number;
-}
-
 export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleMode }) {
   const config = getInvoiceModuleConfig(mode);
   const router = useRouter();
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
-  const t = getInvoiceTexts(lang);
+  const t = useMemo(() => getInvoiceTexts(lang), [lang]);
   const { message: messageApi, modal } = App.useApp();
-  const { token } = useAuth();
+  const { token, loading: authLoading } = useAuth();
   const { can } = usePermissions();
   const { pageSizeDefault, pageSizeMax, pageSizeOptions } = useSystemPagination();
   const [transactions, setTransactions] = useState<InvoiceTransaction[]>([]);
@@ -89,12 +80,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     hasPrev: false
   });
   
-  // Transaction generation states
-  const [browserSessionId, setBrowserSessionId] = useState<string>('');
-  const [transactionSession, setTransactionSession] = useState<TransactionGeneratorResponse | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [form] = Form.useForm();
+  // Browser session for invoice number generator (used on create page save)
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
 
@@ -104,39 +90,10 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
   const prevDateRange = useRef<[Dayjs | null, Dayjs | null]>([null, null]);
   const prevSearchText = useRef<string>('');
 
-  // Initialize browser session ID (fixed for this browser)
-  useEffect(() => {
-    const initializeBrowserSession = () => {
-      try {
-        let existingSessionId = sessionStorage.getItem(config.sessionKey);
-        
-        if (!existingSessionId) {
-          existingSessionId = generateBrowserSessionId();
-          sessionStorage.setItem(config.sessionKey, existingSessionId);
-        }
-        
-        setBrowserSessionId(existingSessionId);
-      } catch (error) {
-        console.error('Error initializing invoice browser session:', error);
-      }
-    };
-
-    initializeBrowserSession();
-  }, [config.sessionKey]);
-
-  const generateBrowserSessionId = (): string => {
-    // Generate a unique session ID for this browser tab
-    const timestamp = Date.now().toString(36);
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    return `browser_${timestamp}${randomStr}`;
-  };
-
   // Fetch invoice transactions from t_transaction_h table
   const fetchTransactions = useCallback(async (page: number = 1, pageSize: number = 20) => {
     setLoading(true);
     try {
-      console.log('Fetching invoice transactions...');
-      
       // Build URL with filters - focus on INV prefix for invoices
       let url = `/api/transactions?prefix=INV&invoice_subtype=${encodeURIComponent(config.invoiceSubtype)}&page=${page}&pageSize=${pageSize}`;
       
@@ -145,7 +102,6 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
         const startDate = dateRange[0].format('YYYY-MM-DD');
         const endDate = dateRange[1].format('YYYY-MM-DD');
         url += `&start_date=${startDate}&end_date=${endDate}`;
-        console.log('Date range filter:', startDate, 'to', endDate);
       }
       
       // Add search term if provided
@@ -154,37 +110,32 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
       }
       
       url += `&t=${Date.now()}`;
-      
-      console.log('Fetching from URL:', url);
+
       const response = await fetchWithAuth(url, token, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache'
         }
       });
-      console.log('Response status:', response.status);
       const result = await response.json();
-      console.log('API Response:', result);
-      
-      if (result.success && result.data) {
-        console.log('Setting transactions:', result.data.length, 'records');
+
+      if (result.success && Array.isArray(result.data)) {
         setTransactions(result.data);
-        
-        // Update pagination state
+
         if (result.pagination) {
           setPagination(result.pagination);
         }
       } else {
-        console.error('API failed:', result);
-        messageApi.error(t.prompts.failedLoadList);
+        messageApi.error(
+          (typeof result.error === 'string' && result.error) || t.prompts.failedLoadList
+        );
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
       messageApi.error(t.prompts.errorLoadList);
     } finally {
       setLoading(false);
     }
-  }, [dateRange, searchText, config.invoiceSubtype, pagination.pageSize, t, token]);
+  }, [dateRange, searchText, config.invoiceSubtype, messageApi, t, token]);
 
   useEffect(() => {
     setPagination(prev => {
@@ -195,15 +146,15 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     });
   }, [pageSizeDefault, pageSizeMax]);
 
-  // Load transactions on mount (only once)
+  // Load transactions after auth is ready (only once)
   useEffect(() => {
+    if (authLoading) return;
     if (!hasInitialFetch.current && !isMounted.current) {
       isMounted.current = true;
       hasInitialFetch.current = true;
       fetchTransactions(1, pagination.pageSize);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty dependency array - only run on mount
+  }, [authLoading, fetchTransactions, pagination.pageSize]);
 
   // Refetch when filters change (but skip initial mount)
   useEffect(() => {
@@ -243,128 +194,13 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     fetchTransactions(1, pagination.pageSize);
   };
 
-  // Generate new invoice transaction number (auto-generate when modal opens)
-  const generateInvoiceNumber = async () => {
-    setIsGenerating(true);
-    try {
-      const suffix = getCurrentSuffix();
-      const response = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prefix: 'INV',
-          suffix: suffix,
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        setTransactionSession({
-          success: result.success,
-          transactionCode: result.transactionCode,
-          lastNumber: result.lastNumber,
-          message: result.message
-        });
-        form.setFieldsValue({
-          invoice_number: result.transactionCode
-        });
-        messageApi.success(result.message || t.prompts.generatedNumber);
-      } else {
-        messageApi.error(result.error || t.prompts.failedGenerate);
-      }
-    } catch (error) {
-      console.error('Error generating invoice number:', error);
-      messageApi.error(t.prompts.errorGenerate);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // Auto-generate number when modal opens
-  const handleModalOpen = () => {
-    setShowGenerateModal(true);
-    setTimeout(() => {
-      generateInvoiceNumber();
-    }, 100);
-  };
-
-  // Commit transaction
-  const handleCommitTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        messageApi.success(t.prompts.committed);
-        
-        // Redirect to create page with the generated transaction code
-        if (transactionSession?.transactionCode) {
-          setTransactionSession(null);
-          form.resetFields();
-          setShowGenerateModal(false);
-          router.push(invoiceCreatePath(config, transactionSession.transactionCode));
-        } else {
-          fetchTransactions(); // Refresh the list
-        }
-      } else {
-        messageApi.error(result.error || t.prompts.failedCommit);
-      }
-    } catch (error) {
-      console.error('Error committing transaction:', error);
-      messageApi.error(t.prompts.errorCommit);
-    }
-  };
-
-  // Discard transaction
-  const handleDiscardTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/discard', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          sessionId: browserSessionId
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        messageApi.success(t.prompts.discarded);
-        setTransactionSession(null);
-        form.resetFields();
-        setShowGenerateModal(false);
-        fetchTransactions(); // Refresh the list
-      } else {
-        messageApi.error(result.error || t.prompts.failedDiscard);
-      }
-    } catch (error) {
-      console.error('Error discarding transaction:', error);
-      messageApi.error(t.prompts.errorDiscard);
-    }
+  const handleCreateInvoice = () => {
+    router.push(invoiceDraftCreatePath(config));
   };
 
   const handleCloneInvoice = useCallback(
     async (invoiceId: string) => {
       if (!invoiceId) {
-        messageApi.error(t.prompts.errorClone);
-        return;
-      }
-      if (!browserSessionId) {
         messageApi.error(t.prompts.errorClone);
         return;
       }
@@ -401,18 +237,6 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
         const sourcePaymentTotals = Array.isArray(sourceJson.paymentTotals) ? sourceJson.paymentTotals : [];
         const pm_code = sourcePaymentTotals?.[0]?.pm_code;
 
-        const suffix = getCurrentSuffix();
-        const nextRes = await fetch('/api/transaction-generator/next', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prefix: 'INV', suffix, sessionId: browserSessionId }),
-        });
-        const nextJson = (await nextRes.json()) as { success: boolean; transactionCode?: string; error?: string };
-        if (!nextJson.success || !nextJson.transactionCode) {
-          throw new Error(nextJson.error || t.prompts.failedGenerateNumber);
-        }
-        const newCode = nextJson.transactionCode;
-
         const clonePayload = {
           sourceTransCode: invoiceId,
           header: {
@@ -437,20 +261,13 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
             discount: Number(d.discount || 0),
           })),
         };
-        sessionStorage.setItem(`${config.cloneKeyPrefix}${newCode}`, JSON.stringify(clonePayload));
-
-        const commitRes = await fetch('/api/transaction-generator/commit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: browserSessionId }),
-        });
-        const commitJson = (await commitRes.json()) as { success: boolean; error?: string };
-        if (!commitJson.success) {
-          throw new Error(commitJson.error || t.prompts.failedCommit);
-        }
+        sessionStorage.setItem(
+          `${config.cloneKeyPrefix}${INVOICE_DRAFT_TRANS_CODE}`,
+          JSON.stringify(clonePayload)
+        );
 
         messageApi.destroy('cloneInvoice');
-        router.push(invoiceCreatePath(config, newCode));
+        router.push(invoiceDraftCreatePath(config));
       } catch (err) {
         console.error('Error cloning invoice:', err);
         messageApi.destroy('cloneInvoice');
@@ -459,7 +276,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
         setCloningId(null);
       }
     },
-    [browserSessionId, config, messageApi, router, t, token]
+    [config, messageApi, router, t, token]
   );
 
   const handleVoidInvoice = useCallback(
@@ -742,7 +559,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
       <Button 
         icon={<PlusOutlined />}
         type="primary"
-        onClick={handleModalOpen}
+        onClick={handleCreateInvoice}
       >
         {config.isMonthly ? t.listPage.generateMonthly : t.listPage.generate}
       </Button>
@@ -930,65 +747,6 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
       </Spin>
       </>
       )}
-
-      {/* Generate Invoice Modal */}
-      <Modal
-        title={config.isMonthly ? t.generateModal.titleMonthly : t.generateModal.title}
-        open={showGenerateModal}
-        onCancel={() => {}}
-        closable={false}
-        maskClosable={false}
-        footer={[
-          <Button
-            key="discard"
-            danger
-            onClick={handleDiscardTransaction}
-            disabled={!transactionSession}
-          >
-            {t.generateModal.discard}
-          </Button>,
-          <Button
-            key="create"
-            type="primary"
-            onClick={handleCommitTransaction}
-            disabled={!transactionSession}
-          >
-            {config.isMonthly ? t.generateModal.createMonthlyInvoice : t.generateModal.createInvoice}
-          </Button>
-        ]}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item
-            name="invoice_number"
-            rules={[{ required: true, message: t.generateModal.requiredGenerate }]}
-          >
-            <Input
-              placeholder={isGenerating ? t.generateModal.generatingPlaceholder : t.generateModal.generatedPlaceholder}
-              disabled={true}
-              style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
-            />
-          </Form.Item>
-
-          {isGenerating && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <div className="flex items-center">
-                <span className="text-yellow-600 font-medium">{t.generateModal.generating}</span>
-              </div>
-              <p className="text-sm text-yellow-700 mt-1">
-                {t.generateModal.pleaseWait}
-              </p>
-            </div>
-          )}
-
-          {transactionSession && !isGenerating && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-              <CheckCircleOutlined className="text-green-600 text-lg" />
-              <span className="text-sm text-green-700 font-medium">{t.generateModal.generatedSuccessful}</span>
-            </div>
-          )}
-        </Form>
-      </Modal>
     </BasicPageLayout>
   );
 }

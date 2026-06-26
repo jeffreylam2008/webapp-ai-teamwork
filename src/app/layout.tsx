@@ -402,6 +402,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     pathname.startsWith('/sales/invoices/create/') ||
     pathname.startsWith('/sales/monthly-invoices/create/') ||
     pathname.startsWith('/sales/quotations/create/') ||
+    pathname.startsWith('/sales/orders/create/') ||
     pathname.startsWith('/purchasing/purchases/create/') ||
     pathname === '/warehouse/delivery-note' ||
     pathname.startsWith('/warehouse/stock/grn') ||

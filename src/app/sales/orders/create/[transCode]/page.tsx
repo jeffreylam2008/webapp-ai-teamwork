@@ -11,7 +11,7 @@ import {
   SearchOutlined,
   DeleteOutlined,
 } from '@ant-design/icons';
-import { Button, Form, Input, type InputRef, Select, InputNumber, Card, Row, Col, message, Space, Divider, DatePicker, Modal, Table } from 'antd';
+import { Button, Form, Input, type InputRef, Select, InputNumber, Card, Row, Col, App, Space, Divider, DatePicker, Modal, Table } from 'antd';
 import dayjs from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +22,15 @@ import { getSalesOrderCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getCommonLanguageTexts } from '@/lib/i18n/common';
 import { formatCurrency } from '@/utils/formatCurrency';
+import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
+import { calcLineTotal, normalizeItemCode } from '@/lib/transactionLineItems';
+import {
+  isOrderDraftTransCode,
+  reserveOrderNumber,
+  ORDER_SESSION_KEY,
+  ORDER_BASE_PATH,
+} from '@/features/orders/orderModule';
+import { ensureBrowserSessionId } from '@/lib/transactionDraft';
 
 interface FormData {
   customers: Array<{ cust_code: string; name: string; phone_1: string; email_1: string; pm_code?: string | null }>;
@@ -48,14 +57,19 @@ export default function CreateOrderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token } = useAuth();
+  const { message: messageApi } = App.useApp();
   const [form] = Form.useForm();
 
   const transCode = params?.transCode as string;
+  const isDraft = isOrderDraftTransCode(transCode);
 
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<FormData | null>(null);
   const [lineItems, setLineItems] = useState<OrderLineItem[]>([]);
   const [browserSessionId, setBrowserSessionId] = useState('');
+  const [reservedTransCode, setReservedTransCode] = useState('');
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [generatingNumber, setGeneratingNumber] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
@@ -75,23 +89,23 @@ export default function CreateOrderPage() {
 
   useEffect(() => {
     if (!transCode) {
-      message.error('Invalid access. Please generate a Sales Order number first.');
+      messageApi.error(t.page.invalidHint);
       allowNavigationRef.current = true;
-      router.push('/sales/orders');
+      router.push(ORDER_BASE_PATH);
       return;
     }
 
-    const sessionId = sessionStorage.getItem('order_session_id') || '';
+    const sessionId = ensureBrowserSessionId(ORDER_SESSION_KEY);
     setBrowserSessionId(sessionId);
     fetchFormData();
 
     form.setFieldsValue({
-      trans_code: transCode,
+      ...(isDraft ? {} : { trans_code: transCode }),
       prefix: 'SO',
       transaction_date: dayjs(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transCode]);
+  }, [transCode, isDraft]);
 
   useEffect(() => {
     if (formData && user) {
@@ -159,44 +173,51 @@ export default function CreateOrderPage() {
       if (result.success) {
         setFormData(result.data);
       } else {
-        message.error(result.error || 'Failed to load form data');
+        messageApi.error(result.error || 'Failed to load form data');
       }
     } catch (error) {
       console.error(error);
-      message.error('Error loading form data');
+      messageApi.error('Error loading form data');
     }
   };
 
   const addLineItem = (product?: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
     if (!product) return;
 
-    const existingIdx = lineItems.findIndex((item) => item.item_code === product.item_code);
-    if (existingIdx >= 0) {
-      const updated = [...lineItems];
-      const curr = updated[existingIdx];
-      const nextQty = curr.qty + 1;
-      const lineSubtotal = nextQty * curr.price;
-      const discountAmount = lineSubtotal * (curr.discount / 100);
-      updated[existingIdx] = { ...curr, qty: nextQty, line_total: lineSubtotal - discountAmount };
-      setLineItems(updated);
-      return;
-    }
+    const itemCode = String(product.item_code ?? '').trim();
+    if (!itemCode) return;
+    const codeKey = normalizeItemCode(itemCode);
 
-    const lineTotal = Number(product.price || 0);
-    setLineItems((prev) => [
-      ...prev,
-      {
-        uid: Date.now(),
-        item_code: product.item_code,
-        eng_name: product.eng_name,
-        chi_name: product.chi_name,
-        qty: 1,
-        unit: product.unit,
-        price: Number(product.price || 0),
-        discount: 0,
-        line_total: lineTotal,
-      },
-    ]);
+    setLineItems((prev) => {
+      const existingIdx = prev.findIndex((item) => normalizeItemCode(item.item_code) === codeKey);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        const curr = updated[existingIdx];
+        const nextQty = curr.qty + 1;
+        updated[existingIdx] = {
+          ...curr,
+          qty: nextQty,
+          line_total: calcLineTotal(nextQty, curr.price, curr.discount),
+        };
+        return updated;
+      }
+
+      const price = Number(product.price || 0);
+      return [
+        ...prev,
+        {
+          uid: Date.now(),
+          item_code: itemCode,
+          eng_name: product.eng_name,
+          chi_name: product.chi_name,
+          qty: 1,
+          unit: product.unit,
+          price,
+          discount: 0,
+          line_total: calcLineTotal(1, price, 0),
+        },
+      ];
+    });
   };
 
   const updateLineItem = (index: number, field: keyof OrderLineItem, value: string | number) => {
@@ -207,9 +228,7 @@ export default function CreateOrderPage() {
       const qty = field === 'qty' ? (value as number) : next[index].qty;
       const price = field === 'price' ? (value as number) : next[index].price;
       const discount = field === 'discount' ? (value as number) : next[index].discount;
-      const lineSubtotal = qty * price;
-      const discountAmount = lineSubtotal * (discount / 100);
-      next[index].line_total = lineSubtotal - discountAmount;
+      next[index].line_total = calcLineTotal(qty, price, discount);
     }
 
     setLineItems(next);
@@ -261,16 +280,52 @@ export default function CreateOrderPage() {
       const formValues = await form.validateFields();
 
       if (lineItems.length === 0) {
-        message.error('Please add at least one line item');
+        messageApi.error(t.page.needLineItem);
         return;
       }
 
       const incomplete = lineItems.filter((item) => !item.item_code || item.qty <= 0 || item.price <= 0);
       if (incomplete.length > 0) {
-        message.error('Please complete all line items (item, quantity, price)');
+        messageApi.error(t.page.completeLineItems);
         return;
       }
 
+      if (isDraft) {
+        if (reservedTransCode) {
+          setShowSaveConfirmModal(true);
+          return;
+        }
+        setGeneratingNumber(true);
+        try {
+          const code = await reserveOrderNumber(browserSessionId);
+          setReservedTransCode(code);
+          setShowSaveConfirmModal(true);
+        } catch (error) {
+          messageApi.error(error instanceof Error ? error.message : t.page.failedCreate);
+        } finally {
+          setGeneratingNumber(false);
+        }
+        return;
+      }
+
+      await persistOrder(transCode, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      messageApi.error(t.page.errorSave);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const persistOrder = async (
+    saveCode: string,
+    formValues: Awaited<ReturnType<typeof form.validateFields>>
+  ) => {
+    try {
+      setSaving(true);
       const totalAmount = lineItems.reduce((sum, item) => sum + item.line_total, 0);
       const transactionDate = formValues.transaction_date
         ? (dayjs.isDayjs(formValues.transaction_date)
@@ -278,7 +333,7 @@ export default function CreateOrderPage() {
           : String(formValues.transaction_date))
         : undefined;
       const payload = {
-        transCode,
+        transCode: saveCode,
         headerData: {
           ...formValues,
           prefix: 'SO',
@@ -288,7 +343,7 @@ export default function CreateOrderPage() {
           is_settle: 0,
         },
         detailsData: lineItems.map((item) => ({
-          trans_code: transCode,
+          trans_code: saveCode,
           item_code: item.item_code,
           eng_name: item.eng_name,
           chi_name: item.chi_name,
@@ -317,38 +372,57 @@ export default function CreateOrderPage() {
       const result = await response.json();
 
       if (!result.success) {
-        message.error(result.error || 'Failed to create Sales Order');
+        messageApi.error(result.error || t.page.failedCreate);
         return;
       }
 
-      if (browserSessionId || transCode) {
-        await TransactionGenerator.commitTransaction(browserSessionId, transCode);
+      if (browserSessionId || saveCode) {
+        await TransactionGenerator.commitTransaction(browserSessionId, saveCode);
       }
 
-      message.success('Sales Order created successfully!');
+      setShowSaveConfirmModal(false);
+      messageApi.success(t.page.createdSuccess);
       allowNavigationRef.current = true;
-      router.push('/sales/orders');
+      router.push(ORDER_BASE_PATH);
     } catch (error) {
       console.error(error);
-      message.error('Error saving Sales Order');
+      messageApi.error(t.page.errorSave);
     } finally {
       setSaving(false);
     }
   };
 
+  const handleConfirmSaveWithNumber = async () => {
+    const code = isDraft ? reservedTransCode : transCode;
+    if (!code) return;
+    try {
+      const formValues = await form.validateFields();
+      await persistOrder(code, formValues);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      console.error(error);
+      messageApi.error(t.page.errorSave);
+    }
+  };
+
   const handleConfirmDiscard = async () => {
     try {
-      await TransactionGenerator.discardTransaction(browserSessionId, transCode);
-      sessionStorage.removeItem('order_session_id');
-      message.success('Sales Order transaction discarded successfully');
+      const codeToDiscard = isDraft ? reservedTransCode : transCode;
+      if (codeToDiscard) {
+        await TransactionGenerator.discardTransaction(browserSessionId, codeToDiscard);
+      }
+      sessionStorage.removeItem(ORDER_SESSION_KEY);
+      messageApi.success(t.page.discardedSuccess);
       setShowDiscardModal(false);
-      const target = pendingNavigateRef.current || '/sales/orders';
+      const target = pendingNavigateRef.current || ORDER_BASE_PATH;
       pendingNavigateRef.current = null;
       allowNavigationRef.current = true;
       router.push(target);
     } catch (error) {
       console.error(error);
-      message.error('Failed to discard transaction');
+      messageApi.error(t.page.failedDiscard);
     }
   };
 
@@ -357,7 +431,7 @@ export default function CreateOrderPage() {
       <Button icon={<ArrowLeftOutlined />} onClick={requestBackOrDiscard}>
         {t.functionBar.back}
       </Button>
-      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving}>
+      <Button icon={<SaveOutlined />} type="primary" onClick={handleSave} loading={saving || generatingNumber}>
         {saveWithShortcutLabel(lang)}
       </Button>
       <Button icon={<StopOutlined />} danger onClick={() => setShowDiscardModal(true)} disabled={saving}>
@@ -390,21 +464,29 @@ export default function CreateOrderPage() {
     );
   }
 
+  const pageTitle = isDraft ? t.page.title : t.page.titleWithCode(transCode);
+  const displayTransCode = isDraft ? reservedTransCode : transCode;
+
   return (
     <BasicPageLayout
       breadcrumb={<Breadcrumb items={[{ label: t.breadcrumb.home, href: '/' }, { label: t.breadcrumb.sales, href: '/sales' }, { label: t.breadcrumb.salesOrder, href: '/sales/orders' }, { label: t.breadcrumb.create, current: true }]} />}
       buttonBar={functionBar}
-      title={t.page.titleWithCode(transCode)}
+      title={pageTitle}
       description={t.page.description}
-      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving }}
+      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || generatingNumber }}
     >
       <div className="px-8 py-6 bg-white" style={{ textAlign: 'left' }}>
         <Form form={form} layout="horizontal" labelCol={{ span: 8, style: { textAlign: 'left' } }} wrapperCol={{ span: 16, style: { textAlign: 'left' } }} className="space-y-6">
           <Row gutter={[24, 24]}>
             <Col xs={24} lg={12}>
               <Card title={t.cards.orderInfo} size="small">
-                <Form.Item label={t.fields.orderNumber} name="trans_code">
-                  <Input disabled style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }} />
+                <Form.Item label={t.fields.orderNumber}>
+                  <Input
+                    disabled
+                    value={displayTransCode}
+                    placeholder={isDraft && !displayTransCode ? t.page.assignedOnSave : undefined}
+                    style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
+                  />
                 </Form.Item>
 
                 <Form.Item label={t.fields.orderDate} name="transaction_date" rules={[{ required: true, message: t.fields.orderDate }]}>
@@ -461,9 +543,17 @@ export default function CreateOrderPage() {
                 title={t.cards.lineItems}
                 size="small"
                 extra={
-                  <Button type="primary" icon={<SearchOutlined />} onClick={() => setShowItemModal(true)}>
-                    {t.lineItemTable.itemsButton}
-                  </Button>
+                  <QuickItemCodeSearchBar
+                    products={formData?.products || []}
+                    placeholder={t.lineItemTable.quickItemCodePlaceholder}
+                    itemsButtonLabel={t.lineItemTable.itemsButton}
+                    productsAvailable={Boolean(formData?.products)}
+                    formDataUnavailableMessage={t.page.failedFormData}
+                    itemNotFoundMessage={t.lineItemTable.itemNotFound}
+                    onAdd={addLineItem}
+                    onOpenItemModal={() => setShowItemModal(true)}
+                    onError={(msg) => messageApi.error(msg)}
+                  />
                 }
               >
                 {lineItems.length === 0 ? (
@@ -526,6 +616,26 @@ export default function CreateOrderPage() {
       </div>
 
       <Modal
+        title={t.page.saveConfirmTitle}
+        open={showSaveConfirmModal}
+        onOk={() => void handleConfirmSaveWithNumber()}
+        onCancel={() => setShowSaveConfirmModal(false)}
+        okText={t.page.saveConfirmOk}
+        cancelText={t.page.saveConfirmCancel}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: !reservedTransCode }}
+      >
+        <p>{reservedTransCode ? t.page.saveConfirmBody(reservedTransCode) : t.page.generatingNumber}</p>
+        {reservedTransCode && (
+          <Input
+            value={reservedTransCode}
+            disabled
+            style={{ marginTop: 12, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600 }}
+          />
+        )}
+      </Modal>
+
+      <Modal
         title={commonT.discardModal.title}
         open={showDiscardModal}
         onOk={handleConfirmDiscard}
@@ -536,7 +646,13 @@ export default function CreateOrderPage() {
       >
         <p>{commonT.discardModal.line1}</p>
         <p>
-          {commonT.discardModal.line2} <strong>{transCode}</strong>
+          {isDraft && !reservedTransCode ? (
+            t.page.discardLine2Draft
+          ) : (
+            <>
+              {commonT.discardModal.line2} <strong>{displayTransCode}</strong>
+            </>
+          )}
         </p>
       </Modal>
 

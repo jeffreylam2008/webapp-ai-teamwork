@@ -13,7 +13,6 @@ import {
 } from '@ant-design/icons';
 import {
   createInvoiceFromSalesOrder,
-  getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
@@ -216,11 +215,6 @@ export default function SalesOrderDetailPage() {
   const handleCreateInvoice = useCallback(async () => {
     if (!transCode || !header || header.is_void === 1 || header.is_settle !== 1) return;
     if (!can('create_invoice')) return;
-    const sessionId = getOrCreateInvoiceBrowserSessionId();
-    if (!sessionId) {
-      messageApi.error(t?.prompts?.invoiceSessionNotReady ?? 'Invoice session is not ready. Please try again.');
-      return;
-    }
     setCreatingInvoice(true);
     messageApi.loading({
       content: t?.prompts?.createInvoiceStarted ?? 'Preparing invoice from sales order…',
@@ -231,7 +225,6 @@ export default function SalesOrderDetailPage() {
       const newCode = await createInvoiceFromSalesOrder({
         salesOrderCode: transCode,
         token,
-        browserSessionId: sessionId,
       });
       messageApi.destroy('createInvoiceFromSo');
       router.push(`/sales/invoices/create/${encodeURIComponent(newCode)}`);

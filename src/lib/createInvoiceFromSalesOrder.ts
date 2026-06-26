@@ -1,19 +1,7 @@
-import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { INVOICE_DRAFT_TRANS_CODE } from '@/features/invoices/invoiceModule';
 
-const INVOICE_SESSION_KEY = 'invoice_session_id';
-
-export function getOrCreateInvoiceBrowserSessionId(): string {
-  if (typeof window === 'undefined') return '';
-  let id = sessionStorage.getItem(INVOICE_SESSION_KEY);
-  if (!id) {
-    const timestamp = Date.now().toString(36);
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    id = `browser_${timestamp}${randomStr}`;
-    sessionStorage.setItem(INVOICE_SESSION_KEY, id);
-  }
-  return id;
-}
+const INVOICE_CLONE_KEY = `invoice_clone_${INVOICE_DRAFT_TRANS_CODE}`;
 
 type DetailResponse = {
   success: boolean;
@@ -32,18 +20,15 @@ type DetailResponse = {
 };
 
 /**
- * Loads a settled SO, reserves a new INV number, stores clone payload, commits generator session.
- * @returns New invoice transaction code for navigation to create page.
+ * Loads a settled SO and stores clone payload for the draft invoice create page.
+ * Invoice number is reserved when the user saves on the create page.
  */
 export async function createInvoiceFromSalesOrder(params: {
   salesOrderCode: string;
   token: string | null;
-  browserSessionId: string;
 }): Promise<string> {
   const salesOrderCode = String(params.salesOrderCode || '').trim();
-  const browserSessionId = String(params.browserSessionId || '').trim();
   if (!salesOrderCode) throw new Error('Sales order code is required');
-  if (!browserSessionId) throw new Error('Invoice session is not ready');
 
   const sourceRes = await fetchWithAuth(
     `/api/transactions/detail/${encodeURIComponent(salesOrderCode)}`,
@@ -80,18 +65,6 @@ export async function createInvoiceFromSalesOrder(params: {
   const sourcePaymentTotals = Array.isArray(sourceJson.paymentTotals) ? sourceJson.paymentTotals : [];
   const pm_code = sourcePaymentTotals[0]?.pm_code;
 
-  const suffix = getCurrentSuffix();
-  const nextRes = await fetch('/api/transaction-generator/next', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix: 'INV', suffix, sessionId: browserSessionId }),
-  });
-  const nextJson = (await nextRes.json()) as { success: boolean; transactionCode?: string; error?: string };
-  if (!nextJson.success || !nextJson.transactionCode) {
-    throw new Error(nextJson.error || 'Failed to generate invoice number');
-  }
-  const newCode = nextJson.transactionCode;
-
   const clonePayload = {
     sourceTransCode: salesOrderCode,
     header: {
@@ -105,18 +78,7 @@ export async function createInvoiceFromSalesOrder(params: {
     },
     details: lineDetails,
   };
-  sessionStorage.setItem(`invoice_clone_${newCode}`, JSON.stringify(clonePayload));
+  sessionStorage.setItem(INVOICE_CLONE_KEY, JSON.stringify(clonePayload));
 
-  const commitRes = await fetch('/api/transaction-generator/commit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: browserSessionId }),
-  });
-  const commitJson = (await commitRes.json()) as { success: boolean; error?: string };
-  if (!commitJson.success) {
-    sessionStorage.removeItem(`invoice_clone_${newCode}`);
-    throw new Error(commitJson.error || 'Failed to commit invoice number');
-  }
-
-  return newCode;
+  return INVOICE_DRAFT_TRANS_CODE;
 }

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { logDateKey, logTimestamp } from '@/lib/datetime';
 
 // Define types for metadata
 interface LogMeta {
@@ -22,7 +23,8 @@ class SimpleLogger {
   }
 
   private writeLog(type: string, level: string, message: string, meta?: LogMeta) {
-    const timestamp = new Date().toISOString();
+    const now = new Date();
+    const timestamp = logTimestamp(now);
     const logEntry = {
       timestamp,
       level,
@@ -31,7 +33,7 @@ class SimpleLogger {
       ...meta
     };
 
-    const logFile = path.join(this.logsDir, `${type}-${new Date().toISOString().split('T')[0]}.log`);
+    const logFile = path.join(this.logsDir, `${type}-${logDateKey(now)}.log`);
     const logLine = JSON.stringify(logEntry) + '\n';
 
     try {
@@ -95,7 +97,7 @@ export const userActionLogger = {
   log: (action: UserAction) => {
     const logData = {
       ...action,
-      timestamp: action.timestamp || new Date(),
+      timestamp: action.timestamp ? logTimestamp(action.timestamp) : logTimestamp(),
       type: 'USER_ACTION',
     };
     

@@ -59,6 +59,16 @@ export function sqlNow(): string {
   return formatSqlDateTime(new Date())!;
 }
 
+/** Log entry timestamp in app timezone (`YYYY-MM-DD HH:mm:ss`). */
+export function logTimestamp(value: Date | string = new Date()): string {
+  return formatSqlDateTime(value) ?? new Date().toISOString();
+}
+
+/** Date key for daily log files in app timezone (`YYYY-MM-DD`). */
+export function logDateKey(value: Date | string = new Date()): string {
+  return logTimestamp(value).split(' ')[0] ?? new Date().toISOString().split('T')[0];
+}
+
 /**
  * Format a MySQL DATETIME (or ISO string) for list/detail UI in app timezone.
  */

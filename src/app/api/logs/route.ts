@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { logDateKey, logTimestamp } from '@/lib/datetime';
 import { systemLogger } from '@/lib/simple-logger';
+import { refreshAppTimezoneFromDb } from '@/lib/systemTimezoneServer';
 
 export async function GET(request: NextRequest) {
   try {
+    await refreshAppTimezoneFromDb();
     const { searchParams } = new URL(request.url);
     const logType = searchParams.get('type') || 'user-actions';
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const date = searchParams.get('date') || logDateKey();
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
     
@@ -18,7 +21,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Log file not found',
-        timestamp: new Date().toISOString()
+        timestamp: logTimestamp()
       }, { status: 404 });
     }
     // Read log file
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
       success: true,
       data: paginatedLogs,
       total: logs.length,
-      timestamp: new Date().toISOString()
+      timestamp: logTimestamp()
     });
   } catch (error) {
     systemLogger.error('Error accessing logs', error as Error);

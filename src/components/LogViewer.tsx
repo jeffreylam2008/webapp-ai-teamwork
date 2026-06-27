@@ -8,6 +8,7 @@ import type { TablePaginationConfig } from 'antd/es/table/interface';
 import type { LogsPageTexts } from '@/lib/i18n/logsPage';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { formatDisplayDateTime } from '@/lib/datetime';
 
 const { Option } = Select;
 
@@ -121,7 +122,7 @@ const LogViewer: React.FC<LogViewerProps> = ({ className, texts: t }) => {
       dataIndex: 'timestamp',
       key: 'timestamp',
       width: 180,
-      render: (timestamp: string) => dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss'),
+      render: (timestamp: string) => formatDisplayDateTime(timestamp) || timestamp,
     },
     {
       title: t.colType,

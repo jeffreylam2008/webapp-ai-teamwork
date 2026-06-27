@@ -5,16 +5,20 @@ import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getPurchaseOrderTexts } from './i18n';
-import { PlusOutlined, ReloadOutlined, FilterOutlined, EyeOutlined, CheckCircleOutlined, ImportOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons';
-import { App, Modal, Table, Button, DatePicker, Space, Form, Input, Tooltip, Spin } from 'antd';
+import { PlusOutlined, ReloadOutlined, FilterOutlined, EyeOutlined, ImportOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons';
+import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin } from 'antd';
 import { Dayjs } from 'dayjs';
-import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  purchaseDraftCreatePath,
+  PURCHASE_CLONE_KEY_PREFIX,
+  TRANSACTION_DRAFT_TRANS_CODE,
+} from '@/features/purchases/purchaseModule';
 
 interface PurchaseOrderTransaction {
   uid: number;
@@ -36,14 +40,6 @@ interface PurchaseOrderTransaction {
   shop_name?: string;
   customer_code?: string;
   customer_name?: string;
-}
-
-interface TransactionGeneratorResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-  transactionCode?: string;
-  lastNumber?: number;
 }
 
 export default function PurchaseOrdersPage() {
@@ -69,11 +65,6 @@ export default function PurchaseOrdersPage() {
     hasPrev: false,
   });
 
-  const [browserSessionId, setBrowserSessionId] = useState<string>('');
-  const [transactionSession, setTransactionSession] = useState<TransactionGeneratorResponse | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerateModal, setShowGenerateModal] = useState(false);
-  const [form] = Form.useForm();
   const [cloningId, setCloningId] = useState<string | null>(null);
 
   const hasInitialFetch = useRef(false);
@@ -87,7 +78,6 @@ export default function PurchaseOrdersPage() {
       existingSessionId = `browser_${Date.now().toString(36)}${Math.random().toString(36).substring(2, 8)}`;
       sessionStorage.setItem('purchase_session_id', existingSessionId);
     }
-    setBrowserSessionId(existingSessionId);
   }, []);
 
   const fetchTransactions = useCallback(
@@ -159,89 +149,8 @@ export default function PurchaseOrdersPage() {
     fetchTransactions(1, pagination.pageSize);
   };
 
-  const generatePONumber = async () => {
-    setIsGenerating(true);
-    try {
-      const suffix = getCurrentSuffix();
-      const response = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix: 'PO', suffix, sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        setTransactionSession({
-          success: result.success,
-          transactionCode: result.transactionCode,
-          lastNumber: result.lastNumber,
-          message: result.message,
-        });
-        form.setFieldsValue({ po_number: result.transactionCode });
-        message.success(result.message || t.prompts.generatedNumber);
-      } else {
-        message.error(result.error || t.prompts.failedGenerate);
-      }
-    } catch (error) {
-      console.error('Error generating PO number:', error);
-      message.error(t.prompts.errorGenerate);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleModalOpen = () => {
-    setShowGenerateModal(true);
-    setTimeout(() => generatePONumber(), 100);
-  };
-
-  const handleCommitTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        message.success(t.prompts.committed);
-        if (transactionSession?.transactionCode) {
-          setTransactionSession(null);
-          form.resetFields();
-          setShowGenerateModal(false);
-          router.push(`/purchasing/purchases/create/${encodeURIComponent(transactionSession.transactionCode)}`);
-        } else {
-          fetchTransactions(1, pagination.pageSize);
-        }
-      } else {
-        message.error(result.error || t.prompts.failedCommit);
-      }
-    } catch (error) {
-      console.error('Error committing transaction:', error);
-      message.error(t.prompts.errorCommit);
-    }
-  };
-
-  const handleDiscardTransaction = async () => {
-    try {
-      const response = await fetch('/api/transaction-generator/discard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (result.success) {
-        message.success(t.prompts.discarded);
-        setTransactionSession(null);
-        form.resetFields();
-        setShowGenerateModal(false);
-        fetchTransactions(1, pagination.pageSize);
-      } else {
-        message.error(result.error || t.prompts.failedDiscard);
-      }
-    } catch (error) {
-      console.error('Error discarding transaction:', error);
-      message.error(t.prompts.errorDiscard);
-    }
+  const handleCreatePurchaseOrder = () => {
+    router.push(purchaseDraftCreatePath());
   };
 
   type TransactionDetailRow = {
@@ -264,10 +173,6 @@ export default function PurchaseOrdersPage() {
 
   const handleClonePo = async (poId: string) => {
     if (!poId) return;
-    if (!browserSessionId) {
-      message.error(t.prompts.errorClone);
-      return;
-    }
 
     setCloningId(poId);
     message.loading({ content: t.prompts.cloneStarted, key: 'clonePo', duration: 0 });
@@ -285,18 +190,6 @@ export default function PurchaseOrdersPage() {
       const sourceDetails = Array.isArray(sourceJson.details) ? sourceJson.details : [];
       const sourcePaymentTotals = Array.isArray(sourceJson.paymentTotals) ? sourceJson.paymentTotals : [];
       const pm_code = sourcePaymentTotals?.[0]?.pm_code;
-
-      const suffix = getCurrentSuffix();
-      const nextRes = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefix: 'PO', suffix, sessionId: browserSessionId }),
-      });
-      const nextJson = (await nextRes.json()) as { success: boolean; transactionCode?: string; error?: string };
-      if (!nextJson.success || !nextJson.transactionCode) {
-        throw new Error(nextJson.error || t.prompts.failedGenerate);
-      }
-      const newCode = nextJson.transactionCode;
 
       const clonePayload = {
         sourceTransCode: poId,
@@ -319,20 +212,14 @@ export default function PurchaseOrdersPage() {
           discount: Number(d.discount || 0),
         })),
       };
-      sessionStorage.setItem(`purchase_clone_${newCode}`, JSON.stringify(clonePayload));
 
-      const commitRes = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const commitJson = (await commitRes.json()) as { success: boolean; error?: string };
-      if (!commitJson.success) {
-        throw new Error(commitJson.error || t.prompts.failedCommit);
-      }
+      sessionStorage.setItem(
+        `${PURCHASE_CLONE_KEY_PREFIX}${TRANSACTION_DRAFT_TRANS_CODE}`,
+        JSON.stringify(clonePayload)
+      );
 
       message.destroy('clonePo');
-      router.push(`/purchasing/purchases/create/${encodeURIComponent(newCode)}`);
+      router.push(purchaseDraftCreatePath());
     } catch (err) {
       console.error('Error cloning PO:', err);
       message.destroy('clonePo');
@@ -580,7 +467,7 @@ export default function PurchaseOrdersPage() {
   const ButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
       {can('create_po') && (
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleModalOpen}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleCreatePurchaseOrder}>
           {t.listPage.generate}
         </Button>
       )}
@@ -720,44 +607,6 @@ export default function PurchaseOrdersPage() {
       </div>
       </Spin>
       )}
-
-      <Modal
-        title={t.generateModal.title}
-        open={showGenerateModal}
-        onCancel={() => {}}
-        closable={false}
-        maskClosable={false}
-        footer={[
-          <Button key="discard" danger onClick={handleDiscardTransaction} disabled={!transactionSession}>
-            {t.generateModal.discard}
-          </Button>,
-          <Button key="create" type="primary" onClick={handleCommitTransaction} disabled={!transactionSession}>
-            {t.generateModal.createPo}
-          </Button>,
-        ]}
-        width={600}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="po_number" rules={[{ required: true, message: t.generateModal.requiredGenerate }]}>
-            <Input
-              placeholder={isGenerating ? t.generateModal.generatingPlaceholder : t.generateModal.generatedPlaceholder}
-              disabled
-              style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
-            />
-          </Form.Item>
-          {isGenerating && (
-            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-              <span className="text-yellow-600 font-medium">{t.generateModal.generating}</span>
-            </div>
-          )}
-          {transactionSession && !isGenerating && (
-            <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-              <CheckCircleOutlined className="text-green-600 text-lg" />
-              <span className="text-sm text-green-700 font-medium">{t.generateModal.generatedSuccessful}</span>
-            </div>
-          )}
-        </Form>
-      </Modal>
     </BasicPageLayout>
   );
 }

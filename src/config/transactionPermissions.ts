@@ -3,8 +3,19 @@
  * Used in t_user_permission and in UI to gate view/create/edit/delete per transaction type.
  */
 
+export type FunctionPermissionRow = {
+  id: string;
+  label: string;
+  create: string;
+  view: string;
+  edit: string;
+  delete: string;
+  /** When true, only the View checkbox is used (e.g. read-only reports). */
+  viewOnly?: boolean;
+};
+
 /** One row in the permissions table: function name + keys for view, create, edit, delete/void */
-export const FUNCTION_PERMISSION_ROWS = [
+export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
   { id: 'po', label: 'Purchase Order', create: 'create_po', view: 'view_po', edit: 'edit_po', delete: 'void_po' },
   { id: 'invoice', label: 'Invoice', create: 'create_invoice', view: 'view_invoice', edit: 'edit_invoice', delete: 'void_invoice' },
   { id: 'sales_order', label: 'Sales Order', create: 'create_sales_order', view: 'view_sales_order', edit: 'edit_sales_order', delete: 'void_sales_order' },
@@ -13,16 +24,43 @@ export const FUNCTION_PERMISSION_ROWS = [
   { id: 'stocktake', label: 'Stocktake', create: 'create_stocktake', view: 'view_stocktake', edit: 'edit_stocktake', delete: 'void_stocktake' },
   { id: 'delivery_note', label: 'Delivery Note', create: 'create_delivery_note', view: 'view_delivery_note', edit: 'edit_delivery_note', delete: 'void_delivery_note' },
   { id: 'adjustment', label: 'Adjustment', create: 'create_adjustment', view: 'view_adjustment', edit: 'edit_adjustment', delete: 'void_adjustment' },
-] as const;
+  {
+    id: 'sales_report',
+    label: 'Sales Report',
+    create: 'create_sales_report',
+    view: 'view_sales_report',
+    edit: 'edit_sales_report',
+    delete: 'void_sales_report',
+    viewOnly: true,
+  },
+];
+
+export function isViewOnlyPermissionRow(row: FunctionPermissionRow): boolean {
+  return row.viewOnly === true;
+}
+
+export function getDefaultAccessFlags(row: FunctionPermissionRow): {
+  a_create: number;
+  a_edit: number;
+  a_delete: number;
+  a_view: number;
+} {
+  if (isViewOnlyPermissionRow(row)) {
+    return { a_create: 0, a_edit: 0, a_delete: 0, a_view: 1 };
+  }
+  return { a_create: 1, a_edit: 1, a_delete: 1, a_view: 1 };
+}
 
 /** Flat list of all permission keys (for API/usePermissions compatibility) */
 export const TRANSACTION_PERMISSIONS = (() => {
   const list: { key: string; label: string }[] = [];
   FUNCTION_PERMISSION_ROWS.forEach((row) => {
     list.push({ key: row.view, label: `View ${row.label}` });
-    list.push({ key: row.create, label: `Create ${row.label}` });
-    list.push({ key: row.edit, label: `Edit ${row.label}` });
-    list.push({ key: row.delete, label: `Delete/Void ${row.label}` });
+    if (!isViewOnlyPermissionRow(row)) {
+      list.push({ key: row.create, label: `Create ${row.label}` });
+      list.push({ key: row.edit, label: `Edit ${row.label}` });
+      list.push({ key: row.delete, label: `Delete/Void ${row.label}` });
+    }
   });
   return list;
 })();
@@ -36,7 +74,7 @@ export const TRANSACTION_PERMISSIONS = (() => {
  */
 /** t_transaction_h.prefix → permission row id (see DB_PREFIX_TO_FUNCTION_ID in transactionPermissionAuth) */
 export function getPermissionRowForTransactionType(transactionType: string) {
-  const map: Record<string, (typeof FUNCTION_PERMISSION_ROWS)[number]['id']> = {
+  const map: Record<string, FunctionPermissionRow['id']> = {
     PO: 'po',
     INV: 'invoice',
     SO: 'sales_order',
@@ -111,4 +149,5 @@ export const MENU_PATH_VIEW_PERMISSION: Record<string, string> = {
   '/sales/monthly-invoices': 'view_invoice',
   '/sales/orders': 'view_sales_order',
   '/sales/quotations': 'view_quotation',
+  '/reports/sales': 'view_sales_report',
 };

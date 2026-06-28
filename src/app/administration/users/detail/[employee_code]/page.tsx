@@ -11,7 +11,7 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { ArrowLeftOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { App, Button, Card, Checkbox, Form, Input, Select, Spin, Table } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
-import { TRANSACTION_PERMISSIONS, FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
+import { TRANSACTION_PERMISSIONS, FUNCTION_PERMISSION_ROWS, isViewOnlyPermissionRow } from '@/config/transactionPermissions';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 interface AdminUser {
@@ -379,10 +379,17 @@ function UserDetailPageContent() {
             onClick={() => {
               const full: Record<string, boolean> = {};
               FUNCTION_PERMISSION_ROWS.forEach((r) => {
-                full[r.create] = true;
-                full[r.view] = true;
-                full[r.edit] = true;
-                full[r.delete] = true;
+                if (isViewOnlyPermissionRow(r)) {
+                  full[r.view] = true;
+                  full[r.create] = false;
+                  full[r.edit] = false;
+                  full[r.delete] = false;
+                } else {
+                  full[r.create] = true;
+                  full[r.view] = true;
+                  full[r.edit] = true;
+                  full[r.delete] = true;
+                }
               });
               form.setFieldsValue(full);
             }}
@@ -459,12 +466,21 @@ function UserDetailPageContent() {
                         size="small"
                         className="p-0 h-auto text-xs"
                         onClick={() => {
-                          form.setFieldsValue({
-                            [row.create]: true,
-                            [row.view]: true,
-                            [row.edit]: true,
-                            [row.delete]: true,
-                          });
+                          if (isViewOnlyPermissionRow(row)) {
+                            form.setFieldsValue({
+                              [row.view]: true,
+                              [row.create]: false,
+                              [row.edit]: false,
+                              [row.delete]: false,
+                            });
+                          } else {
+                            form.setFieldsValue({
+                              [row.create]: true,
+                              [row.view]: true,
+                              [row.edit]: true,
+                              [row.delete]: true,
+                            });
+                          }
                         }}
                       >
                         {ud.linkAll}
@@ -503,33 +519,42 @@ function UserDetailPageContent() {
                   key: 'create',
                   width: 90,
                   align: 'center',
-                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) => (
-                    <Form.Item name={row.create} valuePropName="checked" noStyle>
-                      <Checkbox />
-                    </Form.Item>
-                  ),
+                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
+                    isViewOnlyPermissionRow(row) ? (
+                      <span className="text-neutral-400">—</span>
+                    ) : (
+                      <Form.Item name={row.create} valuePropName="checked" noStyle>
+                        <Checkbox />
+                      </Form.Item>
+                    ),
                 },
                 {
                   title: ud.colEdit,
                   key: 'edit',
                   width: 90,
                   align: 'center',
-                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) => (
-                    <Form.Item name={row.edit} valuePropName="checked" noStyle>
-                      <Checkbox />
-                    </Form.Item>
-                  ),
+                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
+                    isViewOnlyPermissionRow(row) ? (
+                      <span className="text-neutral-400">—</span>
+                    ) : (
+                      <Form.Item name={row.edit} valuePropName="checked" noStyle>
+                        <Checkbox />
+                      </Form.Item>
+                    ),
                 },
                 {
                   title: ud.colDelete,
                   key: 'delete',
                   width: 100,
                   align: 'center',
-                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) => (
-                    <Form.Item name={row.delete} valuePropName="checked" noStyle>
-                      <Checkbox />
-                    </Form.Item>
-                  ),
+                  render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
+                    isViewOnlyPermissionRow(row) ? (
+                      <span className="text-neutral-400">—</span>
+                    ) : (
+                      <Form.Item name={row.delete} valuePropName="checked" noStyle>
+                        <Checkbox />
+                      </Form.Item>
+                    ),
                 },
               ]}
             />

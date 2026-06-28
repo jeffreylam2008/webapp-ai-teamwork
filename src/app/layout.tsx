@@ -26,7 +26,8 @@ import {
   InboxOutlined,
   TruckOutlined,
   DollarOutlined,
-  ShoppingOutlined
+  ShoppingOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import SystemLogo from '@/components/SystemLogo';
 import { fetchSystemBranding, pickSidebarLogo } from '@/lib/systemBranding';
@@ -319,6 +320,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       case 'SettingOutlined': return <SettingOutlined />;
       case 'DollarOutlined': return <DollarOutlined />;
       case 'ShoppingOutlined': return <ShoppingOutlined />;
+      case 'BarChartOutlined': return <BarChartOutlined />;
       default: return <HomeOutlined />;
     }
   };

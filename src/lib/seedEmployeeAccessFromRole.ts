@@ -1,5 +1,5 @@
 import dbService from '@/lib/database';
-import { FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
+import { FUNCTION_PERMISSION_ROWS, getDefaultAccessFlags } from '@/config/transactionPermissions';
 import {
   accessRowsToPermissionKeys,
   permissionKeysToAccessRows,
@@ -8,11 +8,12 @@ import {
 
 async function ensureDefaultRowsForRole(roleCode: number): Promise<void> {
   for (const row of FUNCTION_PERMISSION_ROWS) {
+    const flags = getDefaultAccessFlags(row);
     await dbService.query(
       `INSERT INTO t_employee_access_default (role_code, \`function\`, a_create, a_edit, a_delete, a_view)
-       VALUES (?, ?, 1, 1, 1, 1)
-       ON DUPLICATE KEY UPDATE a_create = 1, a_edit = 1, a_delete = 1, a_view = 1`,
-      [roleCode, row.id]
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE a_create = VALUES(a_create), a_edit = VALUES(a_edit), a_delete = VALUES(a_delete), a_view = VALUES(a_view)`,
+      [roleCode, row.id, flags.a_create, flags.a_edit, flags.a_delete, flags.a_view]
     );
   }
 }

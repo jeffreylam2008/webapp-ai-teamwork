@@ -61,6 +61,15 @@
     ]
   },
   {
+    "key": "reports",
+    "label": "Reports",
+    "icon": "BarChartOutlined",
+    "order": 6.5,
+    "submenu": [
+      { "key": "sales-report", "label": "Sales Report", "href": "/reports/sales" }
+    ]
+  },
+  {
     "key": "administration",
     "label": "Administration",
     "icon": "SettingOutlined",

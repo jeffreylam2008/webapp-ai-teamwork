@@ -27,6 +27,9 @@ const ZH_HANT: Record<MenuKey, string> = {
   orders: '銷售訂單',
   quotations: '報價單',
 
+  reports: '報表',
+  'sales-report': '銷售報表',
+
   administration: '系統管理',
   users: '用戶',
   settings: '設定',

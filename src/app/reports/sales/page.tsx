@@ -107,11 +107,12 @@ export default function SalesReportPage() {
   }, [token, authLoading]);
 
   const fetchReport = useCallback(
-    async (page = 1, pageSize = pagination.pageSize) => {
+    async (page = 1, pageSize = pagination.pageSize, groupByOverride?: GroupBy) => {
       if (!token || !canView) return;
+      const effectiveGroupBy = groupByOverride ?? groupBy;
       setLoading(true);
       try {
-        let url = `/api/reports/sales?group_by=${groupBy}&page=${page}&pageSize=${pageSize}`;
+        let url = `/api/reports/sales?group_by=${effectiveGroupBy}&page=${page}&pageSize=${pageSize}`;
         if (dateRange[0] && dateRange[1]) {
           url += `&start_date=${dateRange[0].format('YYYY-MM-DD')}`;
           url += `&end_date=${dateRange[1].format('YYYY-MM-DD')}`;
@@ -322,7 +323,12 @@ export default function SalesReportPage() {
       />
       <Select
         value={groupBy}
-        onChange={(value: GroupBy) => setGroupBy(value)}
+        onChange={(value: GroupBy) => {
+          setGroupBy(value);
+          setRows([]);
+          setPagination((prev) => ({ ...prev, current: 1 }));
+          void fetchReport(1, pagination.pageSize, value);
+        }}
         style={{ width: 150 }}
         options={[
           { value: 'invoice', label: t.filters.byInvoice },
@@ -414,6 +420,7 @@ export default function SalesReportPage() {
           <Card size="small">
             {groupBy === 'item' ? (
               <Table<ItemReportRow>
+                key="item"
                 columns={itemColumns}
                 dataSource={rows as ItemReportRow[]}
                 rowKey="item_code"
@@ -430,6 +437,7 @@ export default function SalesReportPage() {
               />
             ) : (
               <Table<InvoiceReportRow>
+                key="invoice"
                 columns={invoiceColumns}
                 dataSource={rows as InvoiceReportRow[]}
                 rowKey="trans_code"

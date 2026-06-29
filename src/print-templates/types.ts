@@ -29,6 +29,10 @@ export interface PrintTransactionHeader {
   customer_email?: string;
   customer_delivery_addr?: string;
   customer_statement_remark?: string;
+  customer_delivery_remark?: string;
+  customer_from_time?: string;
+  customer_to_time?: string;
+  customer_attn_1?: string;
   supplier_name?: string;
   shop_name?: string;
   shop_phone?: string;

@@ -323,10 +323,10 @@ export default function CreatePurchaseOrderPage() {
     const searchLower = supplierSearchText.toLowerCase();
     return formData.suppliers.filter((supplier) => {
       return (
-        supplier.supp_code.toLowerCase().includes(searchLower) ||
-        supplier.name.toLowerCase().includes(searchLower) ||
-        (supplier.phone_1 && supplier.phone_1.toLowerCase().includes(searchLower)) ||
-        (supplier.email_1 && supplier.email_1.toLowerCase().includes(searchLower))
+        String(supplier.supp_code ?? '').toLowerCase().includes(searchLower) ||
+        String(supplier.name ?? '').toLowerCase().includes(searchLower) ||
+        String(supplier.phone_1 ?? '').toLowerCase().includes(searchLower) ||
+        String(supplier.email_1 ?? '').toLowerCase().includes(searchLower)
       );
     });
   }, [formData?.suppliers, supplierSearchText]);
@@ -353,9 +353,9 @@ export default function CreatePurchaseOrderPage() {
     const searchLower = itemSearchText.toLowerCase();
     return formData.products.filter((item) => {
       return (
-        item.item_code.toLowerCase().includes(searchLower) ||
-        item.eng_name.toLowerCase().includes(searchLower) ||
-        (item.chi_name && item.chi_name.toLowerCase().includes(searchLower))
+        String(item.item_code ?? '').toLowerCase().includes(searchLower) ||
+        String(item.eng_name ?? '').toLowerCase().includes(searchLower) ||
+        String(item.chi_name ?? '').toLowerCase().includes(searchLower)
       );
     });
   }, [formData?.products, itemSearchText]);

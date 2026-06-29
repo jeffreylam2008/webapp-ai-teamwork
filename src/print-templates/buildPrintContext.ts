@@ -46,6 +46,17 @@ export type PrintPaymentRow = {
   amount: string;
 };
 
+export type PrintDeliveryDetailRow = {
+  line1: string;
+  line2: string;
+  line3: string;
+  line4: string;
+  line5: string;
+  lineRemark: string;
+  unit: string;
+  qty: string;
+};
+
 export type TransactionPrintTemplateContext = {
   documentTitle: string;
   codeLabel: string;
@@ -67,6 +78,7 @@ export type TransactionPrintTemplateContext = {
   shopPhone: string;
   shopAddress: string;
   details: PrintDetailRow[];
+  deliveryDetails: PrintDeliveryDetailRow[];
   items: PrintInvoiceItemRow[];
   pages: PrintInvoicePage[];
   paymentTotals: PrintPaymentRow[];
@@ -85,6 +97,14 @@ export type TransactionPrintTemplateContext = {
   invoiceNum: string;
   statementRemark: string;
   hasStatementRemark: boolean;
+  salesPerson: string;
+  paymentMethodDisplay: string;
+  deliveryFromTime: string;
+  deliveryToTime: string;
+  deliveryRemark: string;
+  showDeliveryTime: boolean;
+  deliveryTimeLabel: string;
+  deliveryTimeToLabel: string;
 };
 
 const INVOICE_ITEMS_PER_PAGE = 6;
@@ -149,6 +169,29 @@ function chunkInvoicePages(items: PrintInvoiceItemRow[]): PrintInvoicePage[] {
   }
   pages[pages.length - 1].isLastPage = true;
   return pages;
+}
+
+function buildDeliveryDetailRows(details: PrintTransactionDetail[]): PrintDeliveryDetailRow[] {
+  return (details ?? []).map((row) => {
+    const chi = String(row.chi_name ?? '').trim();
+    const eng = String(row.eng_name ?? '').trim();
+    const code = String(row.item_code ?? '').trim();
+    const nameLines: string[] = [];
+    if (chi) nameLines.push(chi);
+    if (eng && eng !== chi) nameLines.push(eng);
+    if (nameLines.length === 0 && code) nameLines.push(code);
+
+    return {
+      line1: nameLines[0] ?? '',
+      line2: nameLines[1] ?? '',
+      line3: nameLines[2] ?? '',
+      line4: nameLines[3] ?? '',
+      line5: nameLines[4] ?? '',
+      lineRemark: '',
+      unit: String(row.unit ?? '').trim(),
+      qty: String(row.qty ?? ''),
+    };
+  });
 }
 
 export function buildPrintContext(
@@ -217,6 +260,18 @@ export function buildPrintContext(
   const totalFormatted = formatCurrency(total);
 
   const statementRemark = (header.customer_statement_remark ?? '').trim();
+  const deliveryRemark = (header.customer_delivery_remark ?? '').trim();
+  const deliveryFromTime = String(header.customer_from_time ?? '').trim();
+  const deliveryToTime = String(header.customer_to_time ?? '').trim();
+  const salesPerson =
+    (header.customer_attn_1 ?? '').trim() ||
+    (header.employee_code ?? '').trim();
+  const paymentMethodDisplay =
+    (header.payment_method ?? '').trim() ||
+    (paymentTotals[0]?.pm_code ?? '').trim() ||
+    '1';
+
+  const deliveryDetails = buildDeliveryDetailRows(details);
 
   return {
     documentTitle: options.documentTitle,
@@ -242,6 +297,7 @@ export function buildPrintContext(
     shopPhone: header.shop_phone ?? '',
     shopAddress: (header.shop_address ?? '').trim() || '—',
     details: detailRows,
+    deliveryDetails,
     items: invoiceItems,
     pages: invoicePages,
     paymentTotals: paymentRows,
@@ -260,5 +316,13 @@ export function buildPrintContext(
     invoiceNum: header.trans_code ?? '',
     statementRemark,
     hasStatementRemark: statementRemark.length > 0,
+    salesPerson,
+    paymentMethodDisplay,
+    deliveryFromTime,
+    deliveryToTime,
+    deliveryRemark,
+    showDeliveryTime: deliveryFromTime.length > 0 || deliveryToTime.length > 0,
+    deliveryTimeLabel: '送貨時間:',
+    deliveryTimeToLabel: '至',
   };
 }

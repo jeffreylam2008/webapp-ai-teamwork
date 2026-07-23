@@ -8,14 +8,20 @@ import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
 import { getWarehouseTexts } from '@/app/warehouse/i18n';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { DeleteOutlined, SaveOutlined, CloseOutlined, SearchOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { DeleteOutlined, SaveOutlined, CloseOutlined, SearchOutlined } from '@ant-design/icons';
 import { Form, Input, type InputRef, DatePicker, Select, Button, Table, message, Card, Row, Col, Typography, Modal, Spin, InputNumber, Space } from 'antd';
 import dayjs from 'dayjs';
-import { TransactionSession } from '@/services/transactionGenerator';
+import { TransactionGenerator } from '@/services/transactionGenerator';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  ensureBrowserSessionId,
+  reserveGrnNumber,
+  GRN_SESSION_KEY,
+  GRN_STOCK_LIST_PATH,
+} from '@/features/grn/grnModule';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -111,19 +117,16 @@ function GRNPageContent() {
   const [showItemModal, setShowItemModal] = useState(false);
   const [itemSearchText, setItemSearchText] = useState('');
 
-  const [transactionSession, setTransactionSession] = useState<TransactionSession | null>(null);
-  const [showGenerateModal, setShowGenerateModal] = useState(true);
-  const [isCreateReady, setIsCreateReady] = useState(false);
+  const [reservedTransCode, setReservedTransCode] = useState('');
+  const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [voiding, setVoiding] = useState(false);
-  const [browserSessionId, setBrowserSessionId] = useState<string | null>(null);
+  const [browserSessionId, setBrowserSessionId] = useState('');
   const [generatingNumber, setGeneratingNumber] = useState(false);
   const itemSearchInputRef = useRef<InputRef>(null);
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
-  /** Avoid duplicate /transaction-generator/next for the same browser session (e.g. Strict Mode double mount). */
-  const grnGenerateInitializedRef = useRef<string | null>(null);
 
   // When creating GRN from PO: PO header, details, and received qty per item
   const [poHeader, setPoHeader] = useState<TransactionHeaderResponse | null>(null);
@@ -131,124 +134,17 @@ function GRNPageContent() {
   const [receivedPerItem, setReceivedPerItem] = useState<Record<string, number>>({});
   const [poReceivedLoaded, setPoReceivedLoaded] = useState(false);
 
-  const getCurrentSuffix = (): string => {
-    const now = new Date();
-    const year = now.getFullYear().toString().slice(-2);
-    const month = (now.getMonth() + 1).toString().padStart(2, '0');
-    return `${year}${month}`;
-  };
-
-  const generateBrowserSessionId = (): string => {
-    const timestamp = Date.now().toString(36);
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    return `browser_${timestamp}${randomStr}`;
-  };
-
-  // Initialize browser session (create flow only)
+  // Initialize browser session (create flow only); number is reserved on save
   useEffect(() => {
     if (isEditMode) return;
-    // PO→GRN: always start a new generator session so we never reuse a stale reservation / same code as last draft.
+    // PO→GRN: always start a new generator session so we never reuse a stale reservation.
     if (poTransCode) {
-      sessionStorage.removeItem('grn_session_id');
-      grnGenerateInitializedRef.current = null;
+      sessionStorage.removeItem(GRN_SESSION_KEY);
+      setReservedTransCode('');
     }
-    let existingSessionId = sessionStorage.getItem('grn_session_id');
-    if (!existingSessionId) {
-      existingSessionId = generateBrowserSessionId();
-      sessionStorage.setItem('grn_session_id', existingSessionId);
-    }
-    setBrowserSessionId(existingSessionId);
+    const sessionId = ensureBrowserSessionId(GRN_SESSION_KEY);
+    setBrowserSessionId(sessionId);
   }, [isEditMode, poTransCode]);
-
-  const generateGRNNumber = useCallback(async () => {
-    if (!browserSessionId) return;
-    setGeneratingNumber(true);
-    try {
-      const response = await fetch('/api/transaction-generator/next', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prefix: 'GRN',
-          suffix: getCurrentSuffix(),
-          sessionId: browserSessionId,
-        }),
-      });
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || g.failedGen);
-      }
-      const session: TransactionSession = {
-        sessionId: browserSessionId,
-        prefix: 'GRN',
-        suffix: getCurrentSuffix(),
-        lastNumber: result.lastNumber,
-        transactionCode: result.transactionCode,
-      };
-      setTransactionSession(session);
-      form.setFieldsValue({ grn_no: session.transactionCode });
-    } catch (error) {
-      grnGenerateInitializedRef.current = null;
-      message.error(error instanceof Error ? error.message : g.failedGen);
-    } finally {
-      setGeneratingNumber(false);
-    }
-  }, [browserSessionId, form, g]);
-
-  // Create flow: show generate modal and generate number (like delivery-note)
-  useEffect(() => {
-    if (isEditMode || !browserSessionId) return;
-    if (grnGenerateInitializedRef.current === browserSessionId) return;
-    grnGenerateInitializedRef.current = browserSessionId;
-    setIsCreateReady(false);
-    setShowGenerateModal(true);
-    setTransactionSession(null);
-    form.setFieldsValue({ grn_no: undefined });
-    void generateGRNNumber();
-  }, [isEditMode, browserSessionId, generateGRNNumber, form]);
-
-  const handleCommitGeneratedTransaction = async () => {
-    if (!browserSessionId || !transactionSession) return;
-    try {
-      const response = await fetch('/api/transaction-generator/commit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-      const result = await response.json();
-      if (!result.success) {
-        message.error(result.error || g.commitFailed);
-        return;
-      }
-      message.success(g.numberGenerated);
-      setShowGenerateModal(false);
-      setIsCreateReady(true);
-    } catch (error) {
-      console.error('Error committing transaction:', error);
-      message.error(g.commitError);
-    }
-  };
-
-  const handleDiscardGeneratedTransaction = async () => {
-    if (!browserSessionId) return;
-    try {
-      await fetch('/api/transaction-generator/discard', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: browserSessionId }),
-      });
-    } catch (error) {
-      console.error('Error discarding generated transaction:', error);
-    } finally {
-      setTransactionSession(null);
-      setIsCreateReady(false);
-      setShowGenerateModal(false);
-      form.resetFields();
-      sessionStorage.removeItem('grn_session_id');
-      setBrowserSessionId(null);
-      allowNavigationRef.current = true;
-      router.push('/warehouse/stock');
-    }
-  };
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -458,9 +354,9 @@ function GRNPageContent() {
     return () => ac.abort();
   }, [isFromPO, poTransCode, loadPOData]);
 
-  // Pre-fill form and items from PO when create is ready and PO data is loaded
+  // Pre-fill form and items from PO when PO data is loaded
   useEffect(() => {
-    if (!isCreateReady || !isFromPO || !poHeader || !poDetails.length) return;
+    if (!isFromPO || !poHeader || !poDetails.length) return;
     form.setFieldsValue({
       reference_no: poTransCode,
       wh_code: (poHeader.wh_code || poHeader.shop_code || undefined) as string | undefined,
@@ -489,7 +385,7 @@ function GRNPageContent() {
       })
       .filter((r) => r.remaining > 0);
     setItems(rows);
-  }, [isCreateReady, isFromPO, poHeader, poDetails, receivedPerItem, poTransCode, form]);
+  }, [isFromPO, poHeader, poDetails, receivedPerItem, poTransCode, form]);
 
   // Sync supplier display name when suppliers load (e.g. after edit load)
   useEffect(() => {
@@ -607,18 +503,7 @@ function GRNPageContent() {
     }
   };
 
-  const handleSave = async (values: FormValues) => {
-    if (items.length === 0) {
-      message.error(g.addOneItem);
-      return;
-    }
-
-    const transCode = isEditMode ? editTransCode : values.grn_no;
-    if (!transCode) {
-      message.error(g.grnMissing);
-      return;
-    }
-
+  const persistGrn = async (transCode: string, values: FormValues) => {
     const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.price, 0);
     const authShop = (user?.selected_shopcode || user?.default_shopcode || '').trim();
     const shop_code = authShop || values.wh_code;
@@ -662,27 +547,17 @@ function GRNPageContent() {
         throw new Error(result.error || g.saveFailed);
       }
 
-      if (!isEditMode && transactionSession) {
+      if (!isEditMode && (browserSessionId || transCode)) {
         try {
-          const commitResponse = await fetch('/api/transaction-generator/commit', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionId: transactionSession.sessionId }),
-          });
-          const commitResult = await commitResponse.json();
-          if (!commitResult.success) {
-            console.error('[GRN] Generator commit after save failed:', commitResult.error);
-            message.warning(commitResult.error || g.commitFailed);
-          }
+          await TransactionGenerator.commitTransaction(browserSessionId, transCode);
         } catch (e) {
           console.error('[GRN] Generator commit after save:', e);
           message.warning(g.commitError);
         }
       }
 
-      sessionStorage.removeItem('grn_session_id');
-      grnGenerateInitializedRef.current = null;
-
+      sessionStorage.removeItem(GRN_SESSION_KEY);
+      setShowSaveConfirmModal(false);
       message.success(isEditMode ? g.updated : g.created);
       allowNavigationRef.current = true;
       router.push(`/warehouse/stock/detail/${encodeURIComponent(transCode)}`);
@@ -693,8 +568,61 @@ function GRNPageContent() {
     }
   };
 
+  const handleSave = async (values: FormValues) => {
+    if (items.length === 0) {
+      message.error(g.addOneItem);
+      return;
+    }
+
+    if (isEditMode) {
+      if (!editTransCode) {
+        message.error(g.grnMissing);
+        return;
+      }
+      await persistGrn(editTransCode, values);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (reservedTransCode) {
+        setShowSaveConfirmModal(true);
+        return;
+      }
+      setGeneratingNumber(true);
+      try {
+        const sessionId = browserSessionId || ensureBrowserSessionId(GRN_SESSION_KEY);
+        if (!browserSessionId) setBrowserSessionId(sessionId);
+        const code = await reserveGrnNumber(sessionId);
+        setReservedTransCode(code);
+        form.setFieldsValue({ grn_no: code });
+        setShowSaveConfirmModal(true);
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : g.failedGen);
+      } finally {
+        setGeneratingNumber(false);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmSaveWithNumber = async () => {
+    const code = reservedTransCode;
+    if (!code) return;
+    try {
+      const values = await form.validateFields();
+      await persistGrn(code, values);
+    } catch (error) {
+      if (error && typeof error === 'object' && 'errorFields' in error) {
+        return;
+      }
+      message.error(error instanceof Error ? error.message : g.saveFailed);
+    }
+  };
+
   const handleDiscard = async () => {
-    const target = pendingNavigateRef.current || '/warehouse/stock';
+    const target = pendingNavigateRef.current || GRN_STOCK_LIST_PATH;
     pendingNavigateRef.current = null;
     if (isEditMode) {
       setShowDiscardModal(false);
@@ -703,17 +631,13 @@ function GRNPageContent() {
       return;
     }
     try {
-      if (browserSessionId) {
-        await fetch('/api/transaction-generator/discard', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId: browserSessionId }),
-        });
+      if (reservedTransCode) {
+        await TransactionGenerator.discardTransaction(browserSessionId, reservedTransCode);
       }
-      sessionStorage.removeItem('grn_session_id');
-      setTransactionSession(null);
+      sessionStorage.removeItem(GRN_SESSION_KEY);
+      setReservedTransCode('');
       form.resetFields();
-      setBrowserSessionId(null);
+      setBrowserSessionId('');
       message.success(g.discarded);
       setShowDiscardModal(false);
       allowNavigationRef.current = true;
@@ -813,9 +737,9 @@ function GRNPageContent() {
           <Button
             type="primary"
             icon={<SaveOutlined />}
-            loading={saving}
+            loading={saving || generatingNumber}
             onClick={() => form.submit()}
-            disabled={(!isCreateReady && !isEditMode) || (isEditMode && loading)}
+            disabled={(isEditMode && loading) || generatingNumber}
           >
             {saveWithShortcutLabel(lang)}
           </Button>
@@ -833,7 +757,7 @@ function GRNPageContent() {
               danger
               icon={<CloseOutlined />}
               onClick={showDiscardConfirm}
-              disabled={(!isCreateReady && !isEditMode) || saving}
+              disabled={saving || generatingNumber}
             >
               {g.discard}
             </Button>
@@ -844,11 +768,7 @@ function GRNPageContent() {
       description={g.description}
       actionBarSaveShortcut={{
         onSave: () => form.submit(),
-        disabled:
-          saving ||
-          voiding ||
-          (!isCreateReady && !isEditMode) ||
-          (isEditMode && loading),
+        disabled: saving || voiding || generatingNumber || (isEditMode && loading),
       }}
     >
       <div className="px-8 py-6 bg-white">
@@ -858,16 +778,9 @@ function GRNPageContent() {
           onFinish={handleSave}
           initialValues={{ transaction_date: dayjs() }}
         >
-          {(!isCreateReady && !isEditMode) || (isEditMode && loading) ? (
+          {isEditMode && loading ? (
             <div className="text-center py-8">
-              {isEditMode && loading ? (
-                <Spin />
-              ) : (
-                <>
-                  <div className="text-lg text-gray-600">{g.generatingTitle}</div>
-                  <div className="text-sm text-gray-500 mt-2">{g.generatingHint}</div>
-                </>
-              )}
+              <Spin />
             </div>
           ) : (
             <>
@@ -877,13 +790,25 @@ function GRNPageContent() {
                   <Row gutter={16} align="middle" className="mb-4">
                     <Col span={6}>
                       <label className="font-medium text-gray-700">
-                        {g.grnNumber} <span className="text-gray-500 text-sm">{g.autoGenerated}</span>
+                        {g.grnNumber}{' '}
+                        {!isEditMode && (
+                          <span className="text-gray-500 text-sm">{g.autoGenerated}</span>
+                        )}
                       </label>
                     </Col>
                     <Col span={18}>
-                      <Form.Item name="grn_no" rules={[{ required: true, message: g.grnRequired }]} style={{ marginBottom: 0 }}>
+                      <Form.Item
+                        name="grn_no"
+                        rules={
+                          isEditMode
+                            ? [{ required: true, message: g.grnRequired }]
+                            : undefined
+                        }
+                        style={{ marginBottom: 0 }}
+                      >
                         <Input
                           disabled
+                          placeholder={!isEditMode && !reservedTransCode ? g.assignedOnSave : undefined}
                           style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
                           suffix={generatingNumber ? <Spin size="small" /> : null}
                         />
@@ -1006,9 +931,15 @@ function GRNPageContent() {
           ) : (
             <>
               <p>{g.modalDiscardBody}</p>
-              <p><strong>{g.modalDiscardIrreversible}</strong></p>
-              {transactionSession && (
-                <p><strong>{g.transactionCode}</strong> {transactionSession.transactionCode}</p>
+              {reservedTransCode ? (
+                <>
+                  <p><strong>{g.modalDiscardIrreversible}</strong></p>
+                  <p>
+                    <strong>{g.transactionCode}</strong> {reservedTransCode}
+                  </p>
+                </>
+              ) : (
+                <p>{g.discardLine2Draft}</p>
               )}
             </>
           )}
@@ -1066,55 +997,29 @@ function GRNPageContent() {
           />
         </Modal>
 
-        {/* GRN Code Generation Modal (delivery-note style) */}
         {!isEditMode && (
           <Modal
-            title={g.modalGenTitle}
-            open={showGenerateModal}
-            onCancel={() => {}}
-            closable={false}
-            maskClosable={false}
-            footer={[
-              <Button
-                key="discard"
-                danger
-                onClick={handleDiscardGeneratedTransaction}
-                disabled={!transactionSession || generatingNumber}
-              >
-                {g.discardTransaction}
-              </Button>,
-              <Button
-                key="create"
-                type="primary"
-                onClick={handleCommitGeneratedTransaction}
-                disabled={!transactionSession || generatingNumber}
-              >
-                {g.createGrn}
-              </Button>,
-            ]}
-            width={600}
+            title={g.saveConfirmTitle}
+            open={showSaveConfirmModal}
+            onOk={() => void handleConfirmSaveWithNumber()}
+            onCancel={() => setShowSaveConfirmModal(false)}
+            okText={g.saveConfirmOk}
+            cancelText={g.saveConfirmCancel}
+            confirmLoading={saving}
+            okButtonProps={{ disabled: !reservedTransCode }}
           >
-            <div className="space-y-4">
-              <div>
-                <Input
-                  value={transactionSession?.transactionCode || ''}
-                  placeholder={generatingNumber ? g.generating : g.willGenerate}
-                  disabled
-                  style={{ backgroundColor: '#f5f5f5', color: '#666', cursor: 'not-allowed' }}
-                />
-              </div>
-              {generatingNumber && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded">
-                  <div className="text-sm text-yellow-700">{g.generatingWait}</div>
-                </div>
-              )}
-              {transactionSession && !generatingNumber && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded flex items-center gap-2">
-                  <CheckCircleOutlined className="text-green-600 text-lg" />
-                  <span className="text-sm text-green-700 font-medium">{g.generatedOk}</span>
-                </div>
-              )}
-            </div>
+            <p>
+              {reservedTransCode
+                ? g.saveConfirmBody(reservedTransCode)
+                : g.generatingNumber}
+            </p>
+            {reservedTransCode && (
+              <Input
+                value={reservedTransCode}
+                disabled
+                style={{ marginTop: 12, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600 }}
+              />
+            )}
           </Modal>
         )}
 

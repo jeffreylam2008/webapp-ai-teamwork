@@ -26,6 +26,14 @@ const LATEST_GRN_COST_SUBQUERY = `
   WHERE rn = 1
 `;
 
+type ReportRow = Record<string, unknown> & {
+  sales_amount: number;
+  cost_amount: number;
+  gross_profit: number;
+  details?: Record<string, unknown>[];
+  invoices?: ReportRow[];
+};
+
 function buildWhereClause(
   startDate: string,
   endDate: string,
@@ -51,8 +59,152 @@ function buildWhereClause(
   return { clause, params };
 }
 
+function mapMoneyRow(row: Record<string, unknown>): ReportRow {
+  const sales = Number(row.sales_amount || 0);
+  const cost = Number(row.cost_amount || 0);
+  return {
+    ...row,
+    sales_amount: sales,
+    cost_amount: cost,
+    gross_profit: sales - cost,
+  };
+}
+
+async function attachInvoiceLineDetails(invoiceRows: ReportRow[]): Promise<ReportRow[]> {
+  if (invoiceRows.length === 0) return invoiceRows;
+
+  const transCodes = invoiceRows
+    .map((r) => String(r.trans_code || '').trim())
+    .filter(Boolean);
+  if (transCodes.length === 0) {
+    return invoiceRows.map((row) => ({ ...row, details: [] }));
+  }
+
+  const placeholders = transCodes.map(() => '?').join(', ');
+  const linesResult = await dbService.query<Record<string, unknown>>(
+    `SELECT
+      d.uid,
+      d.trans_code,
+      d.item_code,
+      d.eng_name,
+      d.chi_name,
+      d.unit,
+      d.qty,
+      d.price,
+      d.discount,
+      COALESCE(${LINE_SALES_EXPR}, 0) AS sales_amount,
+      COALESCE(d.qty * COALESCE(gc.unit_cost, 0), 0) AS cost_amount,
+      COALESCE(gc.unit_cost, 0) AS unit_cost
+     FROM t_transaction_d d
+     LEFT JOIN (${LATEST_GRN_COST_SUBQUERY}) gc ON gc.item_code = d.item_code
+     WHERE d.trans_code IN (${placeholders})
+     ORDER BY d.trans_code, d.uid`,
+    transCodes
+  );
+
+  const linesByTrans = new Map<string, Record<string, unknown>[]>();
+  for (const line of linesResult.data || []) {
+    const code = String(line.trans_code || '').trim();
+    if (!code) continue;
+    const sales = Number(line.sales_amount || 0);
+    const cost = Number(line.cost_amount || 0);
+    const mapped = {
+      uid: line.uid,
+      item_code: line.item_code,
+      eng_name: line.eng_name,
+      chi_name: line.chi_name,
+      unit: line.unit,
+      qty: Number(line.qty || 0),
+      price: Number(line.price || 0),
+      discount: Number(line.discount || 0),
+      unit_cost: Number(line.unit_cost || 0),
+      sales_amount: sales,
+      cost_amount: cost,
+      gross_profit: sales - cost,
+    };
+    const list = linesByTrans.get(code) || [];
+    list.push(mapped);
+    linesByTrans.set(code, list);
+  }
+
+  return invoiceRows.map((row) => {
+    const code = String(row.trans_code || '').trim();
+    return {
+      ...row,
+      details: linesByTrans.get(code) || [],
+    };
+  });
+}
+
+async function loadInvoicesForCustomers(
+  whereClause: string,
+  whereParams: string[],
+  customerCodes: string[]
+): Promise<Map<string, ReportRow[]>> {
+  const byCustomer = new Map<string, ReportRow[]>();
+  if (customerCodes.length === 0) return byCustomer;
+
+  const placeholders = customerCodes.map(() => '?').join(', ');
+  const invoiceResult = await dbService.query<Record<string, unknown>>(
+    `SELECT
+      h.trans_code,
+      h.create_date AS transaction_date,
+      h.cust_code AS customer_code,
+      c.name AS customer_name,
+      h.shop_code,
+      s.name AS shop_name,
+      COUNT(DISTINCT d.uid) AS line_count,
+      COALESCE(SUM(${LINE_SALES_EXPR}), 0) AS sales_amount,
+      COALESCE(SUM(d.qty * COALESCE(gc.unit_cost, 0)), 0) AS cost_amount
+     FROM t_transaction_h h
+     INNER JOIN t_transaction_d d ON d.trans_code = h.trans_code
+     LEFT JOIN t_customers c ON c.cust_code = h.cust_code
+     LEFT JOIN t_shop s ON s.shop_code = h.shop_code
+     LEFT JOIN (${LATEST_GRN_COST_SUBQUERY}) gc ON gc.item_code = d.item_code
+     WHERE ${whereClause}
+       AND h.cust_code IN (${placeholders})
+     GROUP BY
+       h.trans_code,
+       h.create_date,
+       h.cust_code,
+       c.name,
+       h.shop_code,
+       s.name
+     ORDER BY h.create_date DESC`,
+    [...whereParams, ...customerCodes]
+  );
+
+  let invoices = (invoiceResult.data || []).map(mapMoneyRow);
+  invoices = await attachInvoiceLineDetails(invoices);
+
+  for (const inv of invoices) {
+    const cust = String(inv.customer_code || '').trim();
+    const list = byCustomer.get(cust) || [];
+    list.push(inv);
+    byCustomer.set(cust, list);
+  }
+
+  return byCustomer;
+}
+
+type GroupByMode =
+  | 'invoice'
+  | 'invoice_detail'
+  | 'customer'
+  | 'customer_detail'
+  | 'product';
+
+function parseGroupBy(raw: string): GroupByMode {
+  const value = raw.trim().toLowerCase();
+  if (value === 'invoice_detail') return 'invoice_detail';
+  if (value === 'customer') return 'customer';
+  if (value === 'customer_detail') return 'customer_detail';
+  if (value === 'product' || value === 'item') return 'product';
+  return 'invoice';
+}
+
 /**
- * GET /api/reports/sales?start_date=&end_date=&shop_code=&group_by=invoice|item&page=1&pageSize=50
+ * GET /api/reports/sales?start_date=&end_date=&shop_code=&group_by=invoice|invoice_detail|customer|customer_detail|product&page=1&pageSize=50
  */
 export async function GET(request: NextRequest) {
   try {
@@ -67,10 +219,13 @@ export async function GET(request: NextRequest) {
     const startDate = (searchParams.get('start_date') || '').trim();
     const endDate = (searchParams.get('end_date') || '').trim();
     const shopCode = (searchParams.get('shop_code') || '').trim();
-    const groupBy = (searchParams.get('group_by') || 'invoice').trim().toLowerCase();
-    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
-    const pageSize = Math.min(200, Math.max(1, parseInt(searchParams.get('pageSize') || '50', 10)));
-    const offset = (page - 1) * pageSize;
+    const groupBy = parseGroupBy(searchParams.get('group_by') || 'invoice');
+    const isExport = searchParams.get('export') === '1';
+    const page = isExport ? 1 : Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const pageSize = isExport
+      ? 10000
+      : Math.min(200, Math.max(1, parseInt(searchParams.get('pageSize') || '50', 10)));
+    const offset = isExport ? 0 : (page - 1) * pageSize;
 
     const { clause: whereClause, params: whereParams } = buildWhereClause(
       startDate,
@@ -103,7 +258,7 @@ export async function GET(request: NextRequest) {
     let dataQuery: string;
     let countQuery: string;
 
-    if (groupBy === 'item') {
+    if (groupBy === 'product') {
       countQuery = `
         SELECT COUNT(DISTINCT d.item_code) AS total
         FROM t_transaction_h h
@@ -126,6 +281,33 @@ export async function GET(request: NextRequest) {
         LEFT JOIN (${LATEST_GRN_COST_SUBQUERY}) gc ON gc.item_code = d.item_code
         WHERE ${whereClause}
         GROUP BY d.item_code
+        ORDER BY sales_amount DESC
+        LIMIT ? OFFSET ?
+      `;
+    } else if (groupBy === 'customer' || groupBy === 'customer_detail') {
+      countQuery = `
+        SELECT COUNT(DISTINCT h.cust_code) AS total
+        FROM t_transaction_h h
+        INNER JOIN t_transaction_d d ON d.trans_code = h.trans_code
+        WHERE ${whereClause}
+          AND TRIM(COALESCE(h.cust_code, '')) <> ''
+      `;
+
+      dataQuery = `
+        SELECT
+          h.cust_code AS customer_code,
+          c.name AS customer_name,
+          COUNT(DISTINCT h.trans_code) AS invoice_count,
+          COUNT(DISTINCT d.uid) AS line_count,
+          COALESCE(SUM(${LINE_SALES_EXPR}), 0) AS sales_amount,
+          COALESCE(SUM(d.qty * COALESCE(gc.unit_cost, 0)), 0) AS cost_amount
+        FROM t_transaction_h h
+        INNER JOIN t_transaction_d d ON d.trans_code = h.trans_code
+        LEFT JOIN t_customers c ON c.cust_code = h.cust_code
+        LEFT JOIN (${LATEST_GRN_COST_SUBQUERY}) gc ON gc.item_code = d.item_code
+        WHERE ${whereClause}
+          AND TRIM(COALESCE(h.cust_code, '')) <> ''
+        GROUP BY h.cust_code, c.name
         ORDER BY sales_amount DESC
         LIMIT ? OFFSET ?
       `;
@@ -172,16 +354,30 @@ export async function GET(request: NextRequest) {
     const dataParams = [...whereParams, pageSize, offset];
     const dataResult = await dbService.query(dataQuery, dataParams);
 
-    const rows = (dataResult.data || []).map((row: Record<string, unknown>) => {
-      const sales = Number(row.sales_amount || 0);
-      const cost = Number(row.cost_amount || 0);
-      return {
-        ...row,
-        sales_amount: sales,
-        cost_amount: cost,
-        gross_profit: sales - cost,
-      };
-    });
+    let rows: ReportRow[] = (dataResult.data || []).map(mapMoneyRow);
+
+    if (groupBy === 'invoice_detail' && rows.length > 0) {
+      rows = await attachInvoiceLineDetails(rows);
+    }
+
+    if (groupBy === 'customer_detail' && rows.length > 0) {
+      const customerCodes = rows
+        .map((r) => String(r.customer_code || '').trim())
+        .filter(Boolean);
+      const invoicesByCustomer = await loadInvoicesForCustomers(
+        whereClause,
+        whereParams,
+        customerCodes
+      );
+      rows = rows.map((row) => {
+        const code = String(row.customer_code || '').trim();
+        return {
+          ...row,
+          invoice_count: Number(row.invoice_count || 0),
+          invoices: invoicesByCustomer.get(code) || [],
+        };
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -192,7 +388,7 @@ export async function GET(request: NextRequest) {
         gross_profit: totalSales - totalCost,
       },
       data: rows,
-      group_by: groupBy === 'item' ? 'item' : 'invoice',
+      group_by: groupBy,
       pagination: {
         current: page,
         pageSize,

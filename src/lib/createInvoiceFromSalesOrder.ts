@@ -47,6 +47,9 @@ export async function createInvoiceFromSalesOrder(params: {
   if (Number(sourceHeader.is_settle ?? 0) !== 1) {
     throw new Error('Sales order must be settled before creating an invoice');
   }
+  if (Number(sourceHeader.is_convert ?? 0) === 1) {
+    throw new Error('Sales order has already been converted to an invoice');
+  }
 
   const sourceDetails = Array.isArray(sourceJson.details) ? sourceJson.details : [];
   const lineDetails = sourceDetails

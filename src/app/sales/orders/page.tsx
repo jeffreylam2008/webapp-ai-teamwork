@@ -48,6 +48,7 @@ interface OrderTransaction {
   quotation_code?: string;
   payment_method?: string;
   customer_phone?: string;
+  is_convert?: number;
 }
 
 export default function OrdersPage() {
@@ -269,6 +270,7 @@ export default function OrdersPage() {
         !transCode ||
         record.transaction_type !== 'SO' ||
         record.status !== 'Settled' ||
+        Number(record.is_convert ?? 0) === 1 ||
         creatingInvoiceId === record.uid
       ) {
         return;
@@ -304,19 +306,25 @@ export default function OrdersPage() {
       align: 'left' as const,
       fixed: 'left' as const,
       render: (_: unknown, record: OrderTransaction) => {
+        const isConverted =
+          record.status === 'Converted' || Number(record.is_convert ?? 0) === 1;
         const canConfirm =
+          !isConverted &&
           record.transaction_type === 'SO' &&
           record.status !== 'Settled' &&
           record.status !== 'Void' &&
           can('edit_sales_order');
         const canVoid =
+          !isConverted &&
           record.transaction_type === 'SO' &&
           record.status !== 'Void' &&
           record.status !== 'Settled' &&
           can('void_sales_order');
         const canCreateInvoice =
+          !isConverted &&
           record.transaction_type === 'SO' &&
           record.status === 'Settled' &&
+          Number(record.is_convert ?? 0) !== 1 &&
           can('create_invoice');
         return (
           <div className="flex flex-row items-center justify-start gap-2">

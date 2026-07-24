@@ -10,6 +10,7 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
+import { markSalesOrderInvoiced } from '@/lib/salesOrderInvoiceConversion';
 import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
 import { deductWarehouseForConfirmedSalesOrder } from '@/lib/salesOrderConfirmWarehouse';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
@@ -468,6 +469,13 @@ export async function PUT(request: NextRequest) {
 
     if (newlyConfirmedSo) {
       await deductWarehouseForConfirmedSalesOrder(transCode, stockShopCode);
+    }
+
+    if (existsCnt === 0 && effectivePrefix === 'INV' && effectiveIsVoid === 0) {
+      const soRef = String(normalizedHeader.refer_code ?? headerRaw.refer_code ?? '').trim();
+      if (soRef.toUpperCase().startsWith('SO')) {
+        await markSalesOrderInvoiced(soRef);
+      }
     }
 
     if (effectivePrefix === 'SO' && effectiveIsVoid === 1 && Number(prevH?.is_void ?? 0) === 0) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
+import { rollbackSalesOrderIfInvoiceVoided } from '@/lib/salesOrderInvoiceConversion';
 
 /**
  * POST /api/transactions/void-invoice
@@ -63,6 +64,8 @@ export async function POST(request: NextRequest) {
        WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'INV'`,
       [transCode]
     );
+
+    await rollbackSalesOrderIfInvoiceVoided(transCode);
 
     void logTransactionAction({
       request,

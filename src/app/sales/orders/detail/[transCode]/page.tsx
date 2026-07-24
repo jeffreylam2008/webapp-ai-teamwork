@@ -213,7 +213,7 @@ export default function SalesOrderDetailPage() {
   }, [header, load, modal, messageApi, t, token, transCode]);
 
   const handleCreateInvoice = useCallback(async () => {
-    if (!transCode || !header || header.is_void === 1 || header.is_settle !== 1) return;
+    if (!transCode || !header || header.is_void === 1 || header.is_settle !== 1 || header.is_convert === 1) return;
     if (!can('create_invoice')) return;
     setCreatingInvoice(true);
     messageApi.loading({
@@ -239,6 +239,11 @@ export default function SalesOrderDetailPage() {
       setCreatingInvoice(false);
     }
   }, [can, header, messageApi, router, t, token, transCode]);
+
+  const isConverted = useMemo(
+    () => !!header && (header.is_convert === 1 || getTransactionDetailStatusKey(header) === 'Converted'),
+    [header]
+  );
 
   const total = useMemo(() => {
     const headerTotal = n(header?.total);
@@ -315,7 +320,7 @@ export default function SalesOrderDetailPage() {
           {t?.detailPage?.voidOrder ?? 'Void order'}
         </Button>
       )}
-      {header && header.is_void !== 1 && header.is_settle === 1 && can('create_invoice') && (
+      {header && header.is_void !== 1 && header.is_settle === 1 && !isConverted && can('create_invoice') && (
         <Button
           type="primary"
           icon={<FileAddOutlined />}

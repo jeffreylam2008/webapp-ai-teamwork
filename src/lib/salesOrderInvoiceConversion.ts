@@ -52,7 +52,7 @@ export async function rollbackSalesOrderIfInvoiceVoided(invTransCode: string): P
     [inv, ...bindEqualsStoredPrefixRef(PREFIX_REF.INV)]
   );
   const soCode = String(invRes.data?.[0]?.refer_code ?? '').trim();
-  if (!soCode.toUpperCase().startsWith('SO')) return;
+  if (!soCode) return;
 
   await dbService.query(
     `UPDATE t_transaction_h

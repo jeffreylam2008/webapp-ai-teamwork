@@ -517,8 +517,16 @@ export async function PUT(request: NextRequest) {
 
     if (existsCnt === 0 && effectivePrefix === PREFIX_REF.INV && effectiveIsVoid === 0) {
       const soRef = String(normalizedHeader.refer_code ?? headerRaw.refer_code ?? '').trim();
-      if (soRef.toUpperCase().startsWith('SO')) {
-        await markSalesOrderInvoiced(soRef);
+      if (soRef) {
+        const refRes = await dbService.query<{ prefix_ref: string | null; prefix: string | null }>(
+          'SELECT prefix_ref, prefix FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+          [soRef]
+        );
+        const refRow = refRes.data?.[0];
+        const refType = effectivePrefixRef(refRow?.prefix_ref, refRow?.prefix);
+        if (refType === PREFIX_REF.SO) {
+          await markSalesOrderInvoiced(soRef);
+        }
       }
     }
 

@@ -29,13 +29,18 @@ import { formatCurrency } from '@/utils/formatCurrency';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSalesOrderTexts } from './i18n';
 import { orderDraftCreatePath } from '@/features/orders/orderModule';
-import { PREFIX_REF } from '@/lib/prefixRef';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
+
+function isSalesOrderRecord(record: Pick<OrderTransaction, 'prefix_ref' | 'transaction_type'>): boolean {
+  return effectivePrefixRef(record.prefix_ref, record.transaction_type) === PREFIX_REF.SO;
+}
 
 interface OrderTransaction {
   uid: number;
   transaction_id: string;
   transaction_date: string;
   transaction_type: string;
+  prefix_ref?: string;
   customer_code: string;
   customer_name?: string;
   total_amount: number;
@@ -187,7 +192,7 @@ export default function OrdersPage() {
   const handleConfirmSalesOrder = useCallback(
     (record: OrderTransaction) => {
       const transCode = record.transaction_id;
-      if (!transCode || record.transaction_type !== 'SO' || record.status === 'Settled' || record.status === 'Void' || voidingId === record.uid)
+      if (!transCode || !isSalesOrderRecord(record) || record.status === 'Settled' || record.status === 'Void' || voidingId === record.uid)
         return;
       const confirmContent =
         typeof t.prompts.confirmContent === 'function'
@@ -231,7 +236,7 @@ export default function OrdersPage() {
   const handleVoidSalesOrder = useCallback(
     (record: OrderTransaction) => {
       const transCode = record.transaction_id;
-      if (!transCode || record.transaction_type !== 'SO' || record.status === 'Void' || record.status === 'Settled' || confirmingId === record.uid) return;
+      if (!transCode || !isSalesOrderRecord(record) || record.status === 'Void' || record.status === 'Settled' || confirmingId === record.uid) return;
       const hasQta = !!(record.quotation_code && String(record.quotation_code).trim());
       modal.confirm({
         title: t.prompts.voidTitle,
@@ -270,7 +275,7 @@ export default function OrdersPage() {
       const transCode = record.transaction_id;
       if (
         !transCode ||
-        record.transaction_type !== 'SO' ||
+        !isSalesOrderRecord(record) ||
         record.status !== 'Settled' ||
         Number(record.is_convert ?? 0) === 1 ||
         creatingInvoiceId === record.uid
@@ -316,21 +321,22 @@ export default function OrdersPage() {
       render: (_: unknown, record: OrderTransaction) => {
         const isConverted =
           record.status === 'Converted' || Number(record.is_convert ?? 0) === 1;
+        const isSo = isSalesOrderRecord(record);
         const canConfirm =
           !isConverted &&
-          record.transaction_type === 'SO' &&
+          isSo &&
           record.status !== 'Settled' &&
           record.status !== 'Void' &&
           can('edit_sales_order');
         const canVoid =
           !isConverted &&
-          record.transaction_type === 'SO' &&
+          isSo &&
           record.status !== 'Void' &&
           record.status !== 'Settled' &&
           can('void_sales_order');
         const canCreateInvoice =
           !isConverted &&
-          record.transaction_type === 'SO' &&
+          isSo &&
           record.status === 'Settled' &&
           Number(record.is_convert ?? 0) !== 1 &&
           can('create_invoice');
@@ -440,9 +446,9 @@ export default function OrdersPage() {
       key: 'transaction_type',
       sorter: (a: OrderTransaction, b: OrderTransaction) => (a.transaction_type || '').localeCompare(b.transaction_type || ''),
       width: 80,
-      render: (type: string) => (
+      render: (type: string, record: OrderTransaction) => (
         <span className={`px-2 py-1 rounded text-xs font-medium ${
-          type === 'SO' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+          isSalesOrderRecord(record) ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
         }`}>
           {type}
         </span>

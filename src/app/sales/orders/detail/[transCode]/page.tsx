@@ -31,6 +31,10 @@ import {
   TransactionDetailInfoCard,
 } from '@/components/transactionDetailInfo';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  isPrintPopupBlocked,
+  openTransactionPrintWindow,
+} from '@/lib/openTransactionPrintWindow';
 
 const { Text } = Typography;
 
@@ -291,11 +295,13 @@ export default function SalesOrderDetailPage() {
         icon={<PrinterOutlined />}
         onClick={() => {
           if (!transCode) return;
-          window.open(
+          const popup = openTransactionPrintWindow(
             `/sales/orders/print/${encodeURIComponent(transCode)}`,
-            '_blank',
-            'width=820,height=900,scrollbars=yes'
+            { lang }
           );
+          if (isPrintPopupBlocked(popup)) {
+            messageApi.warning('Please allow pop-ups to open the print preview.');
+          }
         }}
       >
         {t?.detailPage?.print ?? 'Print'}
@@ -303,7 +309,7 @@ export default function SalesOrderDetailPage() {
       <Button onClick={() => void load()} disabled={loading}>
         {t?.detailPage?.refresh ?? 'Refresh'}
       </Button>
-      {header && header.is_void !== 1 && header.is_settle !== 1 && can('edit_sales_order') && (
+      {!isConverted && header && header.is_void !== 1 && header.is_settle !== 1 && can('edit_sales_order') && (
         <Button
           type="primary"
           icon={<CheckCircleOutlined />}
@@ -314,7 +320,7 @@ export default function SalesOrderDetailPage() {
           {t?.actions?.confirmOrder ?? 'Confirm order'}
         </Button>
       )}
-      {header && header.is_void !== 1 && header.is_settle !== 1 && can('void_sales_order') && (
+      {!isConverted && header && header.is_void !== 1 && header.is_settle !== 1 && can('void_sales_order') && (
         <Button
           danger
           type="primary"
@@ -327,7 +333,7 @@ export default function SalesOrderDetailPage() {
           {t?.detailPage?.voidOrder ?? 'Void order'}
         </Button>
       )}
-      {header && header.is_void !== 1 && header.is_settle === 1 && !isConverted && can('create_invoice') && (
+      {!isConverted && header && header.is_void !== 1 && header.is_settle === 1 && header.is_convert !== 1 && can('create_invoice') && (
         <Button
           type="primary"
           icon={<FileAddOutlined />}

@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { getPurchaseDefaultPrice } from '@/lib/itemPricing';
-import { PREFIX_REF } from '@/lib/prefixRef';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
 import {
   ensureBrowserSessionId,
   reserveGrnNumber,
@@ -80,6 +80,7 @@ interface TransactionHeaderResponse {
   remark?: string;
   create_date?: string;
   prefix?: string;
+  prefix_ref?: string;
   is_void?: number;
 }
 
@@ -262,7 +263,8 @@ function GRNPageContent() {
       const receivedResult = await receivedRes.json();
       if (detailResult.success && detailResult.header) {
         const header = detailResult.header as TransactionHeaderResponse;
-        if (header.prefix !== 'PO') {
+        const typeRef = effectivePrefixRef(header.prefix_ref, header.prefix);
+        if (typeRef !== PREFIX_REF.PO) {
           message.warning(g.notPO);
           return;
         }
@@ -300,7 +302,8 @@ function GRNPageContent() {
       const header = (result.header || {}) as TransactionHeaderResponse;
       const details = (result.details || []) as TransactionDetailResponse[];
 
-      if (header.prefix && String(header.prefix).toUpperCase() !== 'GRN') {
+      const grnTypeRef = effectivePrefixRef(header.prefix_ref, header.prefix);
+      if (grnTypeRef && grnTypeRef !== PREFIX_REF.GRN) {
         throw new Error(g.notGrn(editTransCode));
       }
 

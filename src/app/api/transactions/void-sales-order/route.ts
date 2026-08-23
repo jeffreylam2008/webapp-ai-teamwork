@@ -4,6 +4,8 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
+import { PREFIX_REF, effectivePrefixRef, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
 
 /**
  * POST /api/transactions/void-sales-order
@@ -35,18 +37,20 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await ensurePrefixRefColumn();
     const hdr = await dbService.query<{
       prefix: string | null;
+      prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
-    }>('SELECT prefix, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1', [transCode]);
+    }>('SELECT prefix, prefix_ref, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1', [transCode]);
 
     const row = hdr.data?.[0];
     if (!row) {
       return NextResponse.json({ success: false, error: 'Sales order not found' }, { status: 404 });
     }
 
-    if (String(row.prefix || '').trim().toUpperCase() !== 'SO') {
+    if (effectivePrefixRef(row.prefix_ref, row.prefix) !== PREFIX_REF.SO) {
       return NextResponse.json({ success: false, error: 'Not a sales order transaction' }, { status: 400 });
     }
 
@@ -64,8 +68,8 @@ export async function POST(request: NextRequest) {
     await dbService.query('START TRANSACTION');
     await dbService.query(
       `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
-       WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO'`,
-      [transCode]
+       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
     );
     await clearSalesOrderWarehouseStageHold(transCode);
     await rollbackQuotationIfSalesOrderFromConversion(transCode);
@@ -75,7 +79,7 @@ export async function POST(request: NextRequest) {
       request,
       action: 'VOID',
       transCode,
-      prefix: 'SO',
+      prefix: PREFIX_REF.SO,
     });
 
     return NextResponse.json({

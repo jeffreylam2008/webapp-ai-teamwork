@@ -4,6 +4,7 @@ import {
   type InvoiceSubtype,
 } from '@/config/invoiceSubtypes';
 import { getCurrentSuffix } from '@/utils/transactionUtils';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 export type InvoiceModuleMode = 'standard' | 'monthly';
 
@@ -19,7 +20,7 @@ export async function reserveInvoiceNumber(sessionId: string): Promise<string> {
   const response = await fetch('/api/transaction-generator/next', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix: 'INV', suffix, sessionId }),
+    body: JSON.stringify({ prefix_ref: PREFIX_REF.INV, suffix, sessionId }),
   });
   const result = (await response.json()) as {
     success: boolean;

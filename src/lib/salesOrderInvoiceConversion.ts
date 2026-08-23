@@ -1,4 +1,9 @@
 import dbService from '@/lib/database';
+import {
+  PREFIX_REF,
+  bindEqualsStoredPrefixRef,
+  sqlEqualsStoredPrefixRef,
+} from '@/lib/prefixRef';
 
 /**
  * When an invoice is created from a settled sales order, mark the SO so it cannot be invoiced again.
@@ -13,8 +18,8 @@ export async function markSalesOrderInvoiced(soTransCode: string): Promise<void>
     is_void: number | null;
   }>(
     `SELECT is_convert, is_settle, is_void FROM t_transaction_h
-     WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO' LIMIT 1`,
-    [so]
+     WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} LIMIT 1`,
+    [so, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
   );
   const row = soRes.data?.[0];
   if (!row) throw new Error('Linked sales order not found');
@@ -29,8 +34,8 @@ export async function markSalesOrderInvoiced(soTransCode: string): Promise<void>
   await dbService.query(
     `UPDATE t_transaction_h
      SET is_convert = 1, modify_date = NOW()
-     WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO'`,
-    [so]
+     WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+    [so, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
   );
 }
 
@@ -43,8 +48,8 @@ export async function rollbackSalesOrderIfInvoiceVoided(invTransCode: string): P
 
   const invRes = await dbService.query<{ refer_code: string | null }>(
     `SELECT refer_code FROM t_transaction_h
-     WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'INV' LIMIT 1`,
-    [inv]
+     WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} LIMIT 1`,
+    [inv, ...bindEqualsStoredPrefixRef(PREFIX_REF.INV)]
   );
   const soCode = String(invRes.data?.[0]?.refer_code ?? '').trim();
   if (!soCode.toUpperCase().startsWith('SO')) return;
@@ -52,8 +57,8 @@ export async function rollbackSalesOrderIfInvoiceVoided(invTransCode: string): P
   await dbService.query(
     `UPDATE t_transaction_h
      SET is_convert = 0, modify_date = NOW()
-     WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO'
+     WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}
        AND is_convert = 1`,
-    [soCode]
+    [soCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
   );
 }

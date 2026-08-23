@@ -1,38 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TransactionGeneratorMiddleware } from '@/middleware/transactionGenerator';
-import { isValidPrefix, getValidPrefixes } from '@/utils/transactionUtils';
+import { resolvePrefixPair } from '@/lib/ensurePrefixRefColumn';
 
+/**
+ * POST /api/transaction-generator/next
+ * Body: { prefix_ref: '_SO' | ... } preferred, or legacy { prefix: 'SO' }.
+ * Display code for the new trans_code is always taken from t_prefix.prefix.
+ */
 export async function POST(request: NextRequest) {
   try {
-    console.log('Transaction generator API called');
-    const { prefix, suffix, sessionId } = await request.json();
-    console.log('Received data:', { prefix, suffix, sessionId });
+    const body = await request.json();
+    const { suffix, sessionId } = body;
+    const rawPrefix = String(body.prefix_ref || body.prefix || '').trim();
 
-    if (!prefix || !suffix || !sessionId) {
-      console.error('Missing required fields:', { prefix, suffix, sessionId });
-      return NextResponse.json(
-        { success: false, error: 'Missing required fields: prefix, suffix, sessionId' },
-        { status: 400 }
-      );
-    }
-
-    // Validate prefix using single source of truth (transactionUtils)
-    if (!isValidPrefix(prefix)) {
-      console.error('Invalid prefix:', prefix);
+    if (!rawPrefix || !suffix || !sessionId) {
       return NextResponse.json(
         {
           success: false,
-          error: `Invalid prefix: ${prefix}. Valid prefixes are: ${getValidPrefixes().join(', ')}`,
+          error: 'Missing required fields: prefix_ref (preferred) or prefix, suffix, sessionId',
         },
         { status: 400 }
       );
     }
 
-    // Use the middleware to generate the transaction number
+    const resolved = await resolvePrefixPair(rawPrefix);
+    if (!resolved) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unknown transaction type "${rawPrefix}". Add or enable it in t_prefix first.`,
+        },
+        { status: 400 }
+      );
+    }
+
     const result = await TransactionGeneratorMiddleware.generateNext({
-      prefix,
-      suffix,
-      sessionId
+      prefix: resolved.prefix_ref,
+      suffix: String(suffix).trim(),
+      sessionId: String(sessionId).trim(),
     });
 
     if (!result.success) {
@@ -42,9 +47,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('Returning response:', result);
-    return NextResponse.json(result);
-
+    return NextResponse.json({
+      success: true,
+      transactionCode: result.transactionCode,
+      lastNumber: result.lastNumber,
+      prefix: result.prefix,
+      prefix_ref: result.prefix_ref,
+    });
   } catch (error) {
     console.error('Error generating transaction code:', error);
     return NextResponse.json(

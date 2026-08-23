@@ -17,6 +17,7 @@ import dayjs, { type Dayjs } from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useTransactionFormData } from '@/hooks/useTransactionFormData';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
@@ -116,7 +117,7 @@ export default function CreateQuotationPage() {
 
     form.setFieldsValue({
       ...(isDraft ? {} : { trans_code: transCode }),
-      prefix: 'QTA',
+      prefix_ref: PREFIX_REF.QTA,
       transaction_date: dayjs(),
       valid_until_date: dayjs().add(30, 'day'),
     });
@@ -503,7 +504,7 @@ export default function CreateQuotationPage() {
         transCode: saveCode,
         headerData: {
           ...restHeader,
-          prefix: 'QTA',
+          prefix_ref: PREFIX_REF.QTA,
           total: totalAmount,
           employee_code: user ? String(user.employee_code) : undefined,
           quotation_date: transactionDate,

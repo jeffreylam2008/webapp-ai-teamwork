@@ -5,6 +5,7 @@ import {
   isMaxAllowedPacketError,
   normalizeItemImageBody,
 } from '@/lib/itemImageServer';
+import { ensureItemPurchasePriceColumn } from '@/lib/ensureItemPurchasePriceColumn';
 
 type ItemRow = {
   uid?: number;
@@ -14,6 +15,7 @@ type ItemRow = {
   desc?: string | null;
   price?: number | null;
   price_special?: number | null;
+  purchase_price?: number | null;
   cate_code?: string | null;
   type?: number | null;
   unit?: string | null;
@@ -37,6 +39,7 @@ type ColumnName =
   | 'desc'
   | 'price'
   | 'price_special'
+  | 'purchase_price'
   | 'cate_code'
   | 'type'
   | 'unit'
@@ -56,6 +59,7 @@ const PATCHABLE_FIELDS = [
   'desc',
   'price',
   'price_special',
+  'purchase_price',
   'cate_code',
   'type',
   'unit',
@@ -96,8 +100,16 @@ async function parsePatchRequest(request: NextRequest): Promise<{
     if (fields.uid != null && fields.uid !== '') fields.uid = Number(fields.uid);
     if (fields.type != null && fields.type !== '') fields.type = Number(fields.type);
     if (fields.price != null && fields.price !== '') fields.price = Number(fields.price);
+    else if (fields.price === '') fields.price = null;
     if (fields.price_special != null && fields.price_special !== '') {
       fields.price_special = Number(fields.price_special);
+    } else if (fields.price_special === '') {
+      fields.price_special = null;
+    }
+    if (fields.purchase_price != null && fields.purchase_price !== '') {
+      fields.purchase_price = Number(fields.purchase_price);
+    } else if (fields.purchase_price === '') {
+      fields.purchase_price = null;
     }
     const img = form.get('image');
     const imageFile = img && typeof img !== 'string' ? (img as File) : null;
@@ -131,6 +143,10 @@ function buildPatchUpdateData(
 }
 
 async function getItemsColumns(): Promise<Set<string>> {
+  await ensureItemPurchasePriceColumn();
+  if (itemsColCache && !itemsColCache.cols.has('purchase_price')) {
+    itemsColCache = null;
+  }
   if (itemsColCache && Date.now() - itemsColCache.ts < ITEMS_COL_TTL_MS) {
     return itemsColCache.cols;
   }
@@ -218,6 +234,7 @@ export async function GET(request: NextRequest) {
         'desc',
         'price',
         'price_special',
+        'purchase_price',
         'cate_code',
         'type',
         'unit',
@@ -298,6 +315,8 @@ export async function POST(request: NextRequest) {
     const price = priceRaw ? Number(priceRaw) : null;
     const priceSpecialRaw = String(form.get('price_special') ?? '').trim();
     const price_special = priceSpecialRaw ? Number(priceSpecialRaw) : null;
+    const purchasePriceRaw = String(form.get('purchase_price') ?? '').trim();
+    const purchase_price = purchasePriceRaw ? Number(purchasePriceRaw) : null;
 
     let image_name: string | null = null;
     let image_body: string | null = null;
@@ -316,6 +335,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const cols = await getItemsColumns();
     const insertData: Record<string, string | number | boolean | null> = {
       item_code,
       eng_name,
@@ -329,6 +349,11 @@ export async function POST(request: NextRequest) {
       image_name,
       image_body,
     };
+    if (cols.has('purchase_price')) {
+      insertData.purchase_price = Number.isFinite(Number(purchase_price))
+        ? Number(purchase_price)
+        : null;
+    }
 
     await dbService.insert('t_items', insertData);
 

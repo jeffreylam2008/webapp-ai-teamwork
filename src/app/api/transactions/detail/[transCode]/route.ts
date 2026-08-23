@@ -7,6 +7,8 @@ import {
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
+import { ensurePrefixRefColumn, resolveDisplayPrefix } from '@/lib/ensurePrefixRefColumn';
+import { effectivePrefixRef } from '@/lib/prefixRef';
 
 async function ensureHeaderWhCodeColumn() {
   const colResult = await dbService.query<{ column_name: string }>(
@@ -40,12 +42,14 @@ export async function GET(
 
     await ensureHeaderWhCodeColumn();
     await ensureInvoiceSubtypeColumns();
+    await ensurePrefixRefColumn();
 
     const headerResult = await dbService.query(
       `SELECT
         h.uid,
         h.trans_code,
         h.prefix,
+        h.prefix_ref,
         h.cust_code,
         h.supp_code,
         h.refer_code,
@@ -66,12 +70,6 @@ export async function GET(
         c.name AS customer_name,
         c.phone_1 AS customer_phone,
         c.email_1 AS customer_email,
-        c.delivery_addr AS customer_delivery_addr,
-        c.statement_remark AS customer_statement_remark,
-        c.delivery_remark AS customer_delivery_remark,
-        c.from_time AS customer_from_time,
-        c.to_time AS customer_to_time,
-        c.attn_1 AS customer_attn_1,
         sup.name AS supplier_name,
         s.name AS shop_name,
         s.phone AS shop_phone,
@@ -104,10 +102,17 @@ export async function GET(
     }
 
     const header = headerRows[0];
+    const headerPrefixRef = effectivePrefixRef(
+      header?.prefix_ref as string | undefined,
+      header?.prefix as string | undefined
+    );
+    const displayPrefix = await resolveDisplayPrefix(headerPrefixRef);
+    header.prefix_ref = headerPrefixRef;
+    header.prefix = displayPrefix || header.prefix;
 
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
-    const prefix = String(header?.prefix ?? '').trim();
+    const prefix = headerPrefixRef || String(header?.prefix ?? '').trim();
     if (
       prefix &&
       !assertDbPrefixPermission(authResult.keys, prefix, 'view')
@@ -120,6 +125,7 @@ export async function GET(
       action: 'VIEW',
       transCode,
       prefix: typeof header?.prefix === 'string' ? header.prefix : undefined,
+      details: { prefix_ref: headerPrefixRef || undefined },
     });
 
     const detailsResult = await dbService.query(

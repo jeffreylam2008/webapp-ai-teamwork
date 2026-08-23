@@ -11,6 +11,7 @@ import { EyeOutlined, DeleteOutlined, ExclamationCircleOutlined, PlusOutlined, P
 import { Modal, message, Form, Input, InputNumber, Select, Upload, Button, Table, Tooltip, Spin } from 'antd';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { prepareItemImageFileForUpload } from '@/lib/itemImageUpload';
+import { clearTransactionFormDataCache } from '@/hooks/useTransactionFormData';
 
 interface DbItem {
   uid: number;
@@ -20,6 +21,7 @@ interface DbItem {
   desc?: string;
   price?: number;
   price_special?: number;
+  purchase_price?: number;
   cate_code?: string;
   type: number;
   unit?: string;
@@ -185,6 +187,21 @@ export default function ProductsItemsPage() {
       },
     },
     {
+      title: t.columns.purchasePrice,
+      dataIndex: 'purchase_price',
+      key: 'purchase_price',
+      sorter: (a: DbItem, b: DbItem) => {
+        const aPrice = a.purchase_price || 0;
+        const bPrice = b.purchase_price || 0;
+        return aPrice - bPrice;
+      },
+      width: 130,
+      render: (price: number) => {
+        if (price === null || price === undefined) return '-';
+        return formatCurrency(price);
+      },
+    },
+    {
       title: t.columns.unit,
       dataIndex: 'unit',
       key: 'unit',
@@ -282,6 +299,7 @@ export default function ProductsItemsPage() {
       
       if (result.success) {
         message.success(t.messages.itemCreated);
+        clearTransactionFormDataCache();
         setCreateModalOpen(false);
         setImageFile(null);
         setPreviewImage(null);
@@ -673,6 +691,17 @@ export default function ProductsItemsPage() {
                 min={0}
                 step={0.01}
                 placeholder={t.createModal.form.pricePlaceholder}
+                style={{ width: '100%' }}
+              />
+            </Form.Item>
+            <Form.Item
+              label={t.createModal.form.purchasePrice}
+              name="purchase_price"
+            >
+              <InputNumber
+                min={0}
+                step={0.01}
+                placeholder={t.createModal.form.purchasePricePlaceholder}
                 style={{ width: '100%' }}
               />
             </Form.Item>

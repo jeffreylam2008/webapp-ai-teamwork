@@ -1,11 +1,13 @@
+import { PREFIX_REF, sqlPrefixInList } from '@/lib/prefixRef';
+
 /** Confirmed, non-void SOs that do not yet have a non-void delivery note (refer_code = SO). */
 export const PENDING_SO_FOR_DN_WHERE = `
-  UPPER(TRIM(COALESCE(so.prefix, ''))) = 'SO'
+  UPPER(TRIM(COALESCE(so.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.SO])}
   AND COALESCE(so.is_void, 0) = 0
   AND COALESCE(so.is_settle, 0) = 1
   AND NOT EXISTS (
     SELECT 1 FROM t_transaction_h dn
-    WHERE UPPER(TRIM(COALESCE(dn.prefix, ''))) = 'DN'
+    WHERE UPPER(TRIM(COALESCE(dn.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.DN])}
       AND COALESCE(dn.is_void, 0) = 0
       AND TRIM(COALESCE(dn.refer_code, '')) = TRIM(so.trans_code)
   )

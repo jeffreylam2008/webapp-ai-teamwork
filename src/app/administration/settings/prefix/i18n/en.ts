@@ -8,7 +8,8 @@ export const en = {
   },
   page: {
     title: 'Prefixes',
-    description: 'Manage prefixes',
+    description:
+      'Manage document prefixes. Changing the prefix code affects new transaction numbers and the displayed transaction type. Prefix Ref is the stable ID and cannot be changed.',
   },
   buttonBar: {
     add: 'Add',
@@ -26,32 +27,24 @@ export const en = {
   filters: {
     title: 'Filter Options',
     searchLabel: 'Search:',
-    searchPlaceholder: 'Search by prefix code or name...',
+    searchPlaceholder: 'Search by prefix code, ref, or name...',
     statusLabel: 'Status:',
     statusAll: 'All',
     search: 'Search',
   },
   actions: {
-    edit: 'Edit',
-    delete: 'Delete',
+    edit: 'Modify prefix',
   },
   columns: {
     prefixCode: 'Prefix Code',
+    prefixRef: 'Prefix Ref',
     prefixName: 'Prefix Name',
     status: 'Status',
+    modifyDate: 'Last Modified',
   },
   status: {
     active: 'Active',
     inactive: 'Inactive',
-  },
-  deleteModal: {
-    title: 'Delete Prefix',
-    ok: 'Yes',
-    cancel: 'Cancel',
-    confirm: (code: string) => `Are you sure you want to delete prefix "${code}"?`,
-    deleted: 'Prefix deleted successfully',
-    failed: 'Failed to delete prefix',
-    error: 'Error deleting prefix',
   },
   createModal: {
     title: 'Create New Prefix',
@@ -65,7 +58,10 @@ export const en = {
   form: {
     prefixCode: 'Prefix Code',
     prefixCodeRequired: 'Prefix code is required',
-    prefixCodePlaceholder: 'Enter prefix code',
+    prefixCodePlaceholder: 'Enter prefix code (e.g. SO)',
+    prefixCodeHelp: 'Editable document code used in transaction numbers (e.g. SO2608-001).',
+    prefixRef: 'Prefix Ref',
+    prefixRefHelp: 'Stable ID used for search and permissions. Cannot be changed after create.',
     prefixName: 'Prefix Name',
     prefixNameRequired: 'Prefix name is required',
     prefixNamePlaceholder: 'Enter prefix name',
@@ -86,13 +82,13 @@ export const en = {
     titleLoading: 'Loading...',
     descriptionLoading: 'Please wait...',
     loadingData: 'Loading prefix data...',
-    title: (name: string) => `🔤 ${name}`,
+    title: (name: string) => `Modify Prefix — ${name}`,
     description: (code: string) => `Prefix Code: ${code}`,
     defaultTitle: 'Prefix Detail',
+    lastModified: 'Last Modified',
   },
   statusOptions: {
     active: 'Active',
     inactive: 'Inactive',
   },
 } as const;
-

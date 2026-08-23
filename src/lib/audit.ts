@@ -62,3 +62,35 @@ export async function logTransactionAction(params: {
   });
 }
 
+/** Audit create/edit of t_prefix master (affects transaction type display codes / numbering). */
+export async function logPrefixAction(params: {
+  request: NextRequest;
+  action: Extract<AuditAction, 'CREATE' | 'EDIT'>;
+  prefixRef: string;
+  prefixCode?: string;
+  details?: Record<string, unknown>;
+}) {
+  const { request, action, prefixRef, prefixCode, details } = params;
+  const user = await getAuditUser(request);
+  const headerCtx = getUserFromRequest(request);
+  const userId = user ? String(user.uid) : headerCtx.userId || 'anonymous';
+  const username = user ? user.username : headerCtx.username || 'anonymous';
+
+  userActionLogger.log({
+    userId,
+    username,
+    action,
+    resource: 'PREFIX',
+    resourceId: prefixRef || prefixCode,
+    details: {
+      prefix_ref: prefixRef || undefined,
+      prefix_code: prefixCode || undefined,
+      ...details,
+    },
+    ipAddress: getRequestIp(request) ?? headerCtx.ipAddress,
+    userAgent: getRequestUserAgent(request) ?? headerCtx.userAgent,
+    method: request.method,
+    path: new URL(request.url).pathname,
+  });
+}
+

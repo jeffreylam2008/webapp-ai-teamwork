@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 /**
  * DELETE /api/transactions/delete-po
  * Body: { transCode: string }
- *
- * Removes a purchase order (PO) and its lines/payment rows.
- * Safety rules:
- * - prefix must be PO
- * - settled PO (is_settle = 1) cannot be deleted
- * - PO with active GRN(s) referencing it cannot be deleted
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -24,15 +19,19 @@ export async function DELETE(request: NextRequest) {
     const headerResult = await dbService.query<{
       trans_code: string;
       prefix: string;
+      prefix_ref: string | null;
       is_settle: number | null;
-    }>('SELECT trans_code, prefix, is_settle FROM t_transaction_h WHERE trans_code = ?', [transCode]);
+    }>(
+      'SELECT trans_code, prefix, prefix_ref, is_settle FROM t_transaction_h WHERE trans_code = ?',
+      [transCode]
+    );
 
     const header = headerResult.data?.[0];
     if (!header) {
       return NextResponse.json({ success: false, error: 'Purchase order not found' }, { status: 404 });
     }
 
-    if (String(header.prefix).toUpperCase() !== 'PO') {
+    if (!matchesPrefixRef(header.prefix, header.prefix_ref, PREFIX_REF.PO)) {
       return NextResponse.json(
         { success: false, error: 'Only purchase order (PO) transactions can be deleted here' },
         { status: 400 }
@@ -46,13 +45,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Block deletion if there are active GRNs referencing this PO (refer_code = PO code)
     const grnCheck = await dbService.query<{ trans_code: string }>(
       `SELECT trans_code
-       FROM t_transaction_h
-       WHERE prefix = 'GRN' AND refer_code = ? AND (is_void IS NULL OR is_void = 0)
+       FROM t_transaction_h h
+       WHERE ${sqlEqualsStoredPrefixRef('h')}
+         AND refer_code = ?
+         AND (is_void IS NULL OR is_void = 0)
        LIMIT 1`,
-      [transCode]
+      [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), transCode]
     );
     if ((grnCheck.data?.length || 0) > 0) {
       return NextResponse.json(
@@ -73,7 +73,7 @@ export async function DELETE(request: NextRequest) {
       request,
       action: 'DELETE',
       transCode,
-      prefix: 'PO',
+      prefix: PREFIX_REF.PO,
     });
 
     return NextResponse.json({
@@ -82,7 +82,9 @@ export async function DELETE(request: NextRequest) {
     });
   } catch (error) {
     console.error('[API] delete-po error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to delete purchase order' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: 'Failed to delete purchase order' },
+      { status: 500 }
+    );
   }
 }
-

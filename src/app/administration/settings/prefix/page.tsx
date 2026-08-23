@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { EyeOutlined, DeleteOutlined, ExclamationCircleOutlined, PlusOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
+import { EditOutlined, PlusOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
 import { Modal, Form, Input, Table, Button, Select, Spin } from 'antd';
 import { useDataTable } from '@/hooks/useDataTable';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
@@ -14,13 +14,13 @@ import { getPrefixTexts } from './i18n';
 interface Prefix {
   uid: number;
   prefix_code: string;
+  prefix_ref?: string;
   prefix_name: string;
   status: number;
+  create_date?: string;
+  modify_date?: string;
   [key: string]: string | number | null | undefined;
 }
-
-type StatusFilter = 'Active' | 'Inactive';
-
 
 export default function PrefixPage() {
   const router = useRouter();
@@ -37,33 +37,29 @@ export default function PrefixPage() {
     [t]
   );
 
-  // Define the columns we want to display
+  const openEdit = (record: Prefix) => {
+    const key = record.prefix_ref || record.prefix_code || '';
+    router.push(`/administration/settings/prefix/detail/${encodeURIComponent(key)}`);
+  };
+
   const displayColumns = [
     {
       title: '',
       key: 'actions',
-      width: 100,
+      width: 72,
       align: 'left' as const,
       render: (_: unknown, record: Prefix) => (
         <div className="flex flex-row items-center justify-start gap-2">
           <button
             className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-blue-100 text-blue-600 hover:text-blue-800 transition"
             title={t.actions.edit}
-            onClick={() => router.push(`/administration/settings/prefix/detail/${encodeURIComponent(record.prefix_code || '')}`)}
+            onClick={() => openEdit(record)}
             style={{ verticalAlign: 'middle' }}
           >
-            <EyeOutlined />
-          </button>
-          <button
-            className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-red-100 text-red-600 hover:text-red-800 transition"
-            title={t.actions.delete}
-            onClick={() => handleDelete(record)}
-            style={{ verticalAlign: 'middle' }}
-          >
-            <DeleteOutlined />
+            <EditOutlined />
           </button>
         </div>
-      )
+      ),
     },
     {
       title: t.columns.prefixCode,
@@ -73,13 +69,23 @@ export default function PrefixPage() {
       width: 140,
     },
     {
+      title: t.columns.prefixRef,
+      dataIndex: 'prefix_ref',
+      key: 'prefix_ref',
+      sorter: (a: Prefix, b: Prefix) =>
+        String(a.prefix_ref || '').localeCompare(String(b.prefix_ref || '')),
+      width: 140,
+      render: (value: string) => (
+        <span className="font-mono text-xs text-gray-600">{value || '—'}</span>
+      ),
+    },
+    {
       title: t.columns.prefixName,
       dataIndex: 'prefix_name',
       key: 'prefix_name',
       sorter: (a: Prefix, b: Prefix) => (a.prefix_name || '').localeCompare(b.prefix_name || ''),
       width: 200,
     },
-
     {
       title: t.columns.status,
       dataIndex: 'status',
@@ -89,110 +95,94 @@ export default function PrefixPage() {
       render: (status: number) => {
         const isActive = status === 1;
         return (
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-            isActive 
-              ? 'bg-green-100 text-green-800' 
-              : 'bg-red-100 text-red-800'
-          }`}>
+          <span
+            className={`px-2 py-1 rounded-full text-xs font-medium ${
+              isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}
+          >
             {isActive ? t.status.active : t.status.inactive}
           </span>
         );
-      }
-    }
+      },
+    },
+    {
+      title: t.columns.modifyDate,
+      dataIndex: 'modify_date',
+      key: 'modify_date',
+      width: 180,
+      sorter: (a: Prefix, b: Prefix) => {
+        if (!a.modify_date && !b.modify_date) return 0;
+        if (!a.modify_date) return -1;
+        if (!b.modify_date) return 1;
+        return new Date(a.modify_date).getTime() - new Date(b.modify_date).getTime();
+      },
+      render: (date: string | null | undefined) =>
+        date ? new Date(date).toLocaleString() : '—',
+    },
   ];
 
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const { 
-    data, 
-    loading, 
-    pagination, 
-    handleTableChange,
-    refreshData,
-    filters,
-    setFilters 
-  } = useDataTable<Prefix>({
-    apiEndpoint: '/api/prefixes',
-    defaultPageSize: 10
-  });
+  const { data, loading, pagination, handleTableChange, refreshData, filters, setFilters } =
+    useDataTable<Prefix>({
+      apiEndpoint: '/api/prefixes',
+      defaultPageSize: 10,
+    });
 
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState<Prefix | null>(null);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createForm] = Form.useForm();
   const [creating, setCreating] = useState(false);
-  const [pageMessage, setPageMessage] = useState<{ type: 'success' | 'error' | null; text: string | null }>({ type: null, text: null });
+  const [pageMessage, setPageMessage] = useState<{
+    type: 'success' | 'error' | null;
+    text: string | null;
+  }>({ type: null, text: null });
   const [modalError, setModalError] = useState<string | null>(null);
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const modalErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-clear pageMessage after 10 seconds
   useEffect(() => {
     if (pageMessage.type && pageMessage.text) {
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current);
-      }
+      if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
       messageTimeoutRef.current = setTimeout(() => {
         setPageMessage({ type: null, text: null });
       }, 10000);
     }
     return () => {
-      if (messageTimeoutRef.current) {
-        clearTimeout(messageTimeoutRef.current);
-      }
+      if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
     };
   }, [pageMessage.type, pageMessage.text]);
 
-  // Auto-clear error after 10 seconds
   useEffect(() => {
     if (error) {
-      if (errorTimeoutRef.current) {
-        clearTimeout(errorTimeoutRef.current);
-      }
-      errorTimeoutRef.current = setTimeout(() => {
-        setError(null);
-      }, 10000);
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+      errorTimeoutRef.current = setTimeout(() => setError(null), 10000);
     }
     return () => {
-      if (errorTimeoutRef.current) {
-        clearTimeout(errorTimeoutRef.current);
-      }
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
     };
   }, [error]);
 
-  // Auto-clear modalError after 10 seconds
   useEffect(() => {
     if (modalError) {
-      if (modalErrorTimeoutRef.current) {
-        clearTimeout(modalErrorTimeoutRef.current);
-      }
-      modalErrorTimeoutRef.current = setTimeout(() => {
-        setModalError(null);
-      }, 10000);
+      if (modalErrorTimeoutRef.current) clearTimeout(modalErrorTimeoutRef.current);
+      modalErrorTimeoutRef.current = setTimeout(() => setModalError(null), 10000);
     }
     return () => {
-      if (modalErrorTimeoutRef.current) {
-        clearTimeout(modalErrorTimeoutRef.current);
-      }
+      if (modalErrorTimeoutRef.current) clearTimeout(modalErrorTimeoutRef.current);
     };
   }, [modalError]);
 
-  // Handle URL message parameters
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const message = params.get('message');
     const type = params.get('type') as 'success' | 'error' | null;
-    
     if (message && type) {
       setPageMessage({ type, text: message });
-      // Remove the message from URL
-      const newUrl = window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
+      window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
 
-  // Create prefix handler
   const handleCreate = () => {
     setCreateModalOpen(true);
     createForm.resetFields();
@@ -210,9 +200,9 @@ export default function PrefixPage() {
       const result = await res.json();
 
       if (result.success) {
-        setPageMessage({ 
-          type: 'success', 
-          text: result.message || t.createModal.created
+        setPageMessage({
+          type: 'success',
+          text: result.message || t.createModal.created,
         });
         setTimeout(() => {
           setCreateModalOpen(false);
@@ -220,53 +210,38 @@ export default function PrefixPage() {
           refreshData();
         }, 1000);
       } else {
-        setPageMessage({ 
-          type: 'error', 
-          text: result.error || t.createModal.failed
+        setPageMessage({
+          type: 'error',
+          text: result.error || t.createModal.failed,
         });
       }
     } catch (err) {
       console.error('Error creating prefix:', err);
-      setPageMessage({ 
-        type: 'error', 
-        text: t.createModal.error
+      setPageMessage({
+        type: 'error',
+        text: t.createModal.error,
       });
     } finally {
       setCreating(false);
     }
   };
 
-  // Delete handler
-  const handleDelete = async (prefix: Prefix) => {
-    setItemToDelete(prefix);
-    setDeleteModalOpen(true);
-  };
-
-  // Button bar for prefixes actions
   const PrefixesButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
-      <Button 
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleCreate}
-      >
+      <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
         {t.buttonBar.add}
       </Button>
-      <Button 
+      <Button
         icon={<FilterOutlined />}
-        type={filters.search ? "primary" : "default"}
+        type={filters.search ? 'primary' : 'default'}
         onClick={() => setShowFilters(!showFilters)}
       >
         {t.buttonBar.filters}
       </Button>
-      <Button 
-        icon={<ReloadOutlined />}
-        onClick={refreshData}
-        loading={loading}
-      >
+      <Button icon={<ReloadOutlined />} onClick={refreshData} loading={loading}>
         {t.buttonBar.refresh}
       </Button>
-      <Button 
+      <Button
         onClick={() => {
           setFilters({});
         }}
@@ -279,7 +254,7 @@ export default function PrefixPage() {
   return (
     <BasicPageLayout
       breadcrumb={
-        <Breadcrumb 
+        <Breadcrumb
           items={[
             { label: t.breadcrumb.home, href: '/' },
             {
@@ -292,34 +267,35 @@ export default function PrefixPage() {
               ],
             },
             { label: t.breadcrumb.settings, href: '/administration/settings' },
-            { label: t.breadcrumb.prefixes, current: true }
-          ]} 
+            { label: t.breadcrumb.prefixes, current: true },
+          ]}
         />
       }
       buttonBar={PrefixesButtonBar}
       title={t.page.title}
       description={t.page.description}
     >
-      {/* Message Section */}
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
-          <div className={`p-4 rounded-md border ${
-            pageMessage.type === 'success' 
-              ? 'bg-green-50 border-green-200 text-green-800' 
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}>
+          <div
+            className={`p-4 rounded-md border ${
+              pageMessage.type === 'success'
+                ? 'bg-green-50 border-green-200 text-green-800'
+                : 'bg-red-50 border-red-200 text-red-800'
+            }`}
+          >
             <div className="flex justify-between items-center">
               <div className="flex items-center">
                 <span className="font-medium">
-                  {pageMessage.type === 'success' ? `✅ ${t.messages.successPrefix}` : `❌ ${t.messages.errorPrefix}`}
+                  {pageMessage.type === 'success'
+                    ? `✅ ${t.messages.successPrefix}`
+                    : `❌ ${t.messages.errorPrefix}`}
                 </span>
                 <span className="ml-2">{pageMessage.text}</span>
               </div>
               <button
                 onClick={() => {
-                  if (messageTimeoutRef.current) {
-                    clearTimeout(messageTimeoutRef.current);
-                  }
+                  if (messageTimeoutRef.current) clearTimeout(messageTimeoutRef.current);
                   setPageMessage({ type: null, text: null });
                 }}
                 className="text-gray-500 hover:text-gray-700"
@@ -331,9 +307,7 @@ export default function PrefixPage() {
         </div>
       )}
 
-      {/* Main Content Block */}
       <div className="px-8 py-6 bg-white">
-        {/* Filter Section */}
         {showFilters && (
           <div className="mb-6 p-4 bg-gray-50 border border-gray-300 rounded-md">
             <h4 className="text-lg font-semibold text-gray-900 mb-4">{t.filters.title}</h4>
@@ -348,10 +322,7 @@ export default function PrefixPage() {
                     onChange={(e) => setFilters({ ...filters, search: e.target.value })}
                     className="px-3 py-2 border border-gray-300 rounded-md min-w-[300px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
-                  <Button
-                    type="primary"
-                    onClick={() => {}}
-                  >
+                  <Button type="primary" onClick={() => {}}>
                     {t.filters.search}
                   </Button>
                 </div>
@@ -360,14 +331,12 @@ export default function PrefixPage() {
           </div>
         )}
 
-        {/* Error Display */}
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-md text-red-800">
             <strong>Error:</strong> {error}
           </div>
         )}
 
-        {/* Data Display */}
         <Spin spinning={loading}>
           {!loading && data.length === 0 ? (
             <div className="text-center py-8 text-gray-600">
@@ -378,67 +347,16 @@ export default function PrefixPage() {
             <Table
               columns={displayColumns}
               dataSource={data}
-              rowKey="prefix_code"
+              rowKey={(record) => String(record.prefix_ref || record.prefix_code || record.uid)}
               pagination={pagination}
               loading={false}
               onChange={handleTableChange}
-              scroll={{ x: 1200 }}
+              scroll={{ x: 900 }}
             />
           )}
         </Spin>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        open={deleteModalOpen}
-        title={t.deleteModal.title}
-        onOk={async () => {
-          if (!itemToDelete) return;
-          try {
-            const res = await fetchWithAuth('/api/prefixes', token, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                prefix_code: itemToDelete.prefix_code
-              }),
-            });
-            const result = await res.json();
-            
-            if (result.success) {
-              setPageMessage({
-                type: 'success',
-                text: result.message || t.deleteModal.deleted
-              });
-              setItemToDelete(null);
-              setDeleteModalOpen(false);
-              refreshData();
-            } else {
-              setPageMessage({
-                type: 'error',
-                text: result.error || t.deleteModal.failed
-              });
-            }
-          } catch {
-            setPageMessage({
-              type: 'error',
-              text: t.deleteModal.error
-            });
-          }
-        }}
-        onCancel={() => {
-          setDeleteModalOpen(false);
-          setItemToDelete(null);
-        }}
-        okText={t.deleteModal.ok}
-        cancelText={t.deleteModal.cancel}
-      >
-        <div className="flex items-center gap-2">
-          <ExclamationCircleOutlined className="text-xl text-yellow-500" />
-          <span>{t.deleteModal.confirm(itemToDelete?.prefix_code || '')}</span>
-        </div>
-      </Modal>
-
-      {/* Create Prefix Modal */}
       <Modal
         open={createModalOpen}
         title={t.createModal.title}
@@ -452,12 +370,7 @@ export default function PrefixPage() {
         keyboard={false}
         centered
       >
-        <Form
-          form={createForm}
-          layout="vertical"
-          onFinish={handleCreateSubmit}
-        >
-          {/* Modal Error Message */}
+        <Form form={createForm} layout="vertical" onFinish={handleCreateSubmit}>
           {modalError && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
               <div className="flex items-center">
@@ -471,6 +384,7 @@ export default function PrefixPage() {
             label={t.form.prefixCode}
             name="prefix_code"
             rules={[{ required: true, message: t.form.prefixCodeRequired }]}
+            extra={t.form.prefixCodeHelp}
           >
             <Input placeholder={t.form.prefixCodePlaceholder} />
           </Form.Item>
@@ -482,8 +396,6 @@ export default function PrefixPage() {
           >
             <Input placeholder={t.form.prefixNamePlaceholder} />
           </Form.Item>
-
-
 
           <Form.Item
             label={t.form.status}

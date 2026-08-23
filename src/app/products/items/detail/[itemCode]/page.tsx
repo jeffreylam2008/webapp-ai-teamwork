@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { prepareItemImageFileForUpload } from '@/lib/itemImageUpload';
+import { clearTransactionFormDataCache } from '@/hooks/useTransactionFormData';
 import { hasItemImage, imageBodyToDataUrl } from '@/lib/itemImageDisplay';
 
 const { Text } = Typography;
@@ -35,6 +36,7 @@ interface DbItem {
   desc?: string;
   price?: number;
   price_special?: number;
+  purchase_price?: number;
   cate_code?: string;
   type: number;
   unit?: string;
@@ -524,6 +526,10 @@ export default function ItemDetailPage() {
       target.append('desc', editItem.desc ?? '');
       target.append('price', editItem.price != null ? String(editItem.price) : '');
       target.append('price_special', editItem.price_special != null ? String(editItem.price_special) : '');
+      target.append(
+        'purchase_price',
+        editItem.purchase_price != null ? String(editItem.purchase_price) : ''
+      );
       target.append('cate_code', editItem.cate_code ?? '');
       target.append('type', String(editItem.type));
       target.append('unit', editItem.unit ?? '');
@@ -547,6 +553,7 @@ export default function ItemDetailPage() {
               desc: editItem.desc ?? null,
               price: editItem.price ?? null,
               price_special: editItem.price_special ?? null,
+              purchase_price: editItem.purchase_price ?? null,
               cate_code: editItem.cate_code ?? null,
               type: editItem.type,
               unit: editItem.unit ?? null,
@@ -555,6 +562,7 @@ export default function ItemDetailPage() {
       const result = await response.json();
       if (result.success) {
         messageApi.success(t.messages.itemUpdated);
+        clearTransactionFormDataCache();
         router.push('/products/items');
       } else {
         messageApi.error(result.error || t.messages.failedSave);
@@ -888,6 +896,14 @@ export default function ItemDetailPage() {
                       style={{ width: '100%' }}
                     />
                   </Descriptions.Item>
+                  <Descriptions.Item label={t.detail.purchasePrice}>
+                    <InputNumber
+                      value={editItem.purchase_price}
+                      onChange={value => handleFieldChange('purchase_price', value)}
+                      min={0}
+                      style={{ width: '100%' }}
+                    />
+                  </Descriptions.Item>
                   <Descriptions.Item label={t.detail.specialPrice}>
                     <InputNumber
                       value={editItem.price_special}
@@ -902,6 +918,11 @@ export default function ItemDetailPage() {
                   <Descriptions.Item label={t.detail.regularPrice}>
                     <Text strong style={{ color: '#1890ff' }}>
                       {formatPrice(item.price)}
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t.detail.purchasePrice}>
+                    <Text strong style={{ color: '#fa8c16' }}>
+                      {formatPrice(item.purchase_price)}
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label={t.detail.specialPrice}>

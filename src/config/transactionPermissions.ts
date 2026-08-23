@@ -1,3 +1,5 @@
+import { PREFIX_REF, normalizeToPrefixRef } from '@/lib/prefixRef';
+
 /**
  * Transaction function keys for access control.
  * Used in t_user_permission and in UI to gate view/create/edit/delete per transaction type.
@@ -72,30 +74,31 @@ export const TRANSACTION_PERMISSIONS = (() => {
  * Paths not in this map are shown to everyone (e.g. Home, Customers, Administration).
  * Must match every gated href in src/data/base-menu.json.
  */
-/** t_transaction_h.prefix → permission row id (see DB_PREFIX_TO_FUNCTION_ID in transactionPermissionAuth) */
+/** t_prefix.prefix_ref (or legacy display) → permission row id */
 export function getPermissionRowForTransactionType(transactionType: string) {
   const map: Record<string, FunctionPermissionRow['id']> = {
-    PO: 'po',
-    INV: 'invoice',
-    SO: 'sales_order',
-    QTA: 'quotation',
-    GRN: 'grn',
-    ST: 'stocktake',
-    DN: 'delivery_note',
-    ADJ: 'adjustment',
+    [PREFIX_REF.PO]: 'po',
+    [PREFIX_REF.INV]: 'invoice',
+    [PREFIX_REF.SO]: 'sales_order',
+    [PREFIX_REF.QTA]: 'quotation',
+    [PREFIX_REF.GRN]: 'grn',
+    [PREFIX_REF.ST]: 'stocktake',
+    [PREFIX_REF.DN]: 'delivery_note',
+    [PREFIX_REF.ADJ]: 'adjustment',
   };
-  const id = map[String(transactionType || '').trim().toUpperCase()];
+  const ref = normalizeToPrefixRef(transactionType);
+  const id = map[ref];
   if (!id) return undefined;
   return FUNCTION_PERMISSION_ROWS.find((r) => r.id === id);
 }
 
-/** Prefixes for warehouse stock list API based on view permissions */
+/** prefix_ref list for warehouse stock list API based on view permissions */
 export function buildWarehouseStockPrefixList(can: (key: string) => boolean): string {
   const parts: string[] = [];
-  if (can('view_grn')) parts.push('GRN');
-  if (can('view_delivery_note')) parts.push('DN');
-  if (can('view_stocktake')) parts.push('ST');
-  if (can('view_adjustment')) parts.push('ADJ');
+  if (can('view_grn')) parts.push(PREFIX_REF.GRN);
+  if (can('view_delivery_note')) parts.push(PREFIX_REF.DN);
+  if (can('view_stocktake')) parts.push(PREFIX_REF.ST);
+  if (can('view_adjustment')) parts.push(PREFIX_REF.ADJ);
   return parts.join(',');
 }
 

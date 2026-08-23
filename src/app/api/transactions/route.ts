@@ -6,10 +6,18 @@ import {
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
+import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
+import {
+  PREFIX_REF,
+  bindParamsForPrefixRefMatch,
+  normalizePrefixRefList,
+  normalizeToPrefixRef,
+  effectivePrefixRef,
+} from '@/lib/prefixRef';
 
 /**
- * GET /api/transactions?prefix=INV|QTA|PO|...&page=1&pageSize=20&start_date=&end_date=&search=
- * List transactions by prefix(es) with pagination and optional date range and search.
+ * GET /api/transactions?prefix=_SO|_INV|SO|INV|...&page=1&pageSize=20&start_date=&end_date=&search=
+ * List transactions by prefix_ref (stable). Display codes (SO, INV, …) are still accepted and normalized.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (!authResult.ok) return authResult.response;
 
     const { searchParams } = new URL(request.url);
-    const prefixParam = searchParams.get('prefix') || '';
+    const prefixParam = searchParams.get('prefix') || searchParams.get('prefix_ref') || '';
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)));
     const startDate = searchParams.get('start_date') || '';
@@ -29,15 +37,16 @@ export async function GET(request: NextRequest) {
     const invoiceSubtypeParam = searchParams.get('invoice_subtype') || '';
 
     await ensureInvoiceSubtypeColumns();
+    await ensurePrefixRefColumn();
 
-    const requestedPrefixes = prefixParam
-      .split(',')
-      .map((p) => p.trim().toUpperCase())
-      .filter(Boolean);
+    const requestedPrefixes = normalizePrefixRefList(prefixParam);
 
     if (requestedPrefixes.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'At least one prefix is required (e.g. prefix=INV or prefix=PO,QTA)' },
+        {
+          success: false,
+          error: 'At least one prefix_ref is required (e.g. prefix=_SO or prefix=SO,QTA)',
+        },
         { status: 400 }
       );
     }
@@ -59,11 +68,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const placeholders = prefixes.map(() => '?').join(',');
-    const params: (string | number)[] = [...prefixes];
-
-    let whereClause = `UPPER(TRIM(COALESCE(h.prefix, ''))) IN (${placeholders})`;
-    const countParams: (string | number)[] = [...prefixes];
+    const match = bindParamsForPrefixRefMatch(prefixes, 'h');
+    const params: (string | number)[] = [...match.params];
+    let whereClause = match.sql;
+    const countParams: (string | number)[] = [...match.params];
 
     if (startDate) {
       whereClause += ' AND DATE(h.create_date) >= ?';
@@ -83,7 +91,16 @@ export async function GET(request: NextRequest) {
         h.cust_code LIKE ? OR h.supp_code LIKE ? OR h.shop_code LIKE ?
       )`;
       params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
-      countParams.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      countParams.push(
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm
+      );
     }
     if (referCode && referCode.trim()) {
       whereClause += ' AND h.refer_code = ?';
@@ -103,7 +120,7 @@ export async function GET(request: NextRequest) {
       countParams.push(v);
     }
     if (invoiceSubtypeParam && invoiceSubtypeParam.trim()) {
-      whereClause += ' AND COALESCE(h.invoice_subtype, \'standard\') = ?';
+      whereClause += " AND COALESCE(h.invoice_subtype, 'standard') = ?";
       params.push(invoiceSubtypeParam.trim().toLowerCase());
       countParams.push(invoiceSubtypeParam.trim().toLowerCase());
     }
@@ -111,6 +128,7 @@ export async function GET(request: NextRequest) {
     const countQuery = `
       SELECT COUNT(*) as total
       FROM t_transaction_h h
+      LEFT JOIN t_prefix p ON UPPER(TRIM(p.prefix_ref)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(h.prefix_ref), ''), h.prefix)))
       LEFT JOIN t_customers c ON h.cust_code = c.cust_code
       LEFT JOIN t_suppliers sup ON h.supp_code = sup.supp_code
       LEFT JOIN t_shop s ON h.shop_code = s.shop_code
@@ -121,12 +139,16 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(total / pageSize);
     const offset = (page - 1) * pageSize;
 
+    const grnMatch = bindParamsForPrefixRefMatch([PREFIX_REF.GRN], 'gh');
+    const poMatch = bindParamsForPrefixRefMatch([PREFIX_REF.PO], 'h');
+
     const dataQuery = `
       SELECT
         h.uid,
         h.trans_code as transaction_id,
         h.create_date as transaction_date,
-        h.prefix as transaction_type,
+        COALESCE(p.prefix, h.prefix) as transaction_type,
+        COALESCE(h.prefix_ref, h.prefix) as prefix_ref,
         h.cust_code as customer_code,
         c.name as customer_name,
         c.phone_1 as customer_phone,
@@ -146,7 +168,7 @@ export async function GET(request: NextRequest) {
         h.invoice_subtype,
         h.billing_period_from,
         h.billing_period_to,
-        CASE WHEN h.prefix = 'PO' THEN IF(
+        CASE WHEN (${poMatch.sql}) THEN IF(
           NOT EXISTS (
             SELECT 1
             FROM t_transaction_d pod
@@ -157,7 +179,7 @@ export async function GET(request: NextRequest) {
                 SELECT SUM(gd.qty)
                 FROM t_transaction_h gh
                 INNER JOIN t_transaction_d gd ON gd.trans_code = gh.trans_code
-                WHERE gh.prefix = 'GRN'
+                WHERE (${grnMatch.sql})
                   AND gh.refer_code = h.trans_code
                   AND (gh.is_void = 0 OR gh.is_void IS NULL)
                   AND gd.item_code = pod.item_code
@@ -171,6 +193,7 @@ export async function GET(request: NextRequest) {
          LEFT JOIN t_payment_method pm ON tt.pm_code = pm.pm_code
          WHERE tt.trans_code = h.trans_code) AS payment_method
       FROM t_transaction_h h
+      LEFT JOIN t_prefix p ON UPPER(TRIM(p.prefix_ref)) = UPPER(TRIM(COALESCE(NULLIF(TRIM(h.prefix_ref), ''), h.prefix)))
       LEFT JOIN t_customers c ON h.cust_code = c.cust_code
       LEFT JOIN t_suppliers sup ON h.supp_code = sup.supp_code
       LEFT JOIN t_shop s ON h.shop_code = s.shop_code
@@ -178,23 +201,36 @@ export async function GET(request: NextRequest) {
       ORDER BY h.create_date DESC
       LIMIT ? OFFSET ?
     `;
-    const dataResult = await dbService.query<Record<string, unknown>>(dataQuery, [...params, pageSize, offset]);
+
+    const dataParams: (string | number)[] = [
+      ...poMatch.params,
+      ...grnMatch.params,
+      ...params,
+      pageSize,
+      offset,
+    ];
+    const dataResult = await dbService.query<Record<string, unknown>>(dataQuery, dataParams);
     const data = (dataResult.data || []).map((row) => {
       const isVoid = Number(row.is_void ?? 0) === 1;
       const isSettle = Number(row.is_settle ?? 0) === 1;
       const isConvert = Number(row.is_convert ?? 0) === 1;
+      const typeDisplay = String(row.transaction_type || '').trim().toUpperCase();
+      const typeRef =
+        effectivePrefixRef(String(row.prefix_ref || ''), typeDisplay) ||
+        normalizeToPrefixRef(typeDisplay);
       let status: string;
       if (isVoid) status = 'Void';
-      else if (isSettle) status = 'Settled';
       else if (isConvert) status = 'Converted';
-      else if (String(row.transaction_type || '').trim().toUpperCase() === 'SO') status = 'Draft';
+      else if (isSettle) status = 'Settled';
+      else if (typeRef === PREFIX_REF.SO || typeDisplay === 'SO') status = 'Draft';
       else status = 'Active';
       return {
         ...row,
+        prefix_ref: typeRef || row.prefix_ref,
         status,
         is_settle: row.is_settle ?? 0,
         po_fully_grn_received:
-          row.transaction_type === 'PO'
+          typeRef === PREFIX_REF.PO || typeDisplay === 'PO'
             ? Number(row.po_fully_grn_received ?? 0) === 1
               ? 1
               : 0

@@ -9,12 +9,25 @@ import { formatSqlDateTime } from '@/lib/datetime';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
-import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
 import { markSalesOrderInvoiced } from '@/lib/salesOrderInvoiceConversion';
+import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
 import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
 import { deductWarehouseForConfirmedSalesOrder } from '@/lib/salesOrderConfirmWarehouse';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
+import {
+  ensurePrefixRefColumn,
+  resolveDisplayPrefix,
+  resolvePrefixPair,
+} from '@/lib/ensurePrefixRefColumn';
+import {
+  PREFIX_REF,
+  effectivePrefixRef,
+  normalizeToPrefixRef,
+  storedTransactionHeaderRef,
+  bindEqualsStoredPrefixRef,
+  sqlEqualsStoredPrefixRef,
+} from '@/lib/prefixRef';
 
 async function loadColumnMap(table: string): Promise<Map<string, string>> {
   const r = await dbService.query<{ COLUMN_NAME: string }>(
@@ -135,11 +148,11 @@ function mergeQtyDelta(oldMap: Map<string, number>, newMap: Map<string, number>)
   return out;
 }
 
-/** Prefixes whose detail line qty (signed for ADJ/ST) updates t_warehouse on save, edit, or void. */
-const WAREHOUSE_QTY_PREFIXES = new Set(['GRN', 'ADJ', 'ST']);
+/** Stable prefix_refs whose detail line qty (signed for ADJ/ST) updates t_warehouse on save/edit/void. */
+const WAREHOUSE_QTY_PREFIX_REFS = new Set([PREFIX_REF.GRN, PREFIX_REF.ADJ, PREFIX_REF.ST]);
 
-function usesWarehouseQtySync(prefix: string): boolean {
-  return WAREHOUSE_QTY_PREFIXES.has(String(prefix || '').trim().toUpperCase());
+function usesWarehouseQtySync(prefixOrRef: string): boolean {
+  return WAREHOUSE_QTY_PREFIX_REFS.has(normalizeToPrefixRef(prefixOrRef) as (typeof PREFIX_REF)['GRN']);
 }
 
 /**
@@ -150,12 +163,12 @@ async function syncPurchaseOrderSettlementFromGrns(poTransCode: string) {
   const code = String(poTransCode || '').trim();
   if (!code) return;
 
-  const poCheck = await dbService.query<{ prefix: string | null }>(
-    'SELECT prefix FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+  const poCheck = await dbService.query<{ prefix: string | null; prefix_ref: string | null }>(
+    'SELECT prefix, prefix_ref FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
     [code]
   );
   const ph = poCheck.data?.[0];
-  if (!ph || String(ph.prefix || '').trim().toUpperCase() !== 'PO') return;
+  if (!ph || effectivePrefixRef(ph.prefix_ref, ph.prefix) !== PREFIX_REF.PO) return;
 
   const poLines = await dbService.query<{ item_code: string; order_qty: number }>(
     `SELECT item_code, COALESCE(SUM(qty), 0) AS order_qty
@@ -168,18 +181,20 @@ async function syncPurchaseOrderSettlementFromGrns(poTransCode: string) {
   const lines = poLines.data || [];
   if (lines.length === 0) {
     await dbService.query(
-      `UPDATE t_transaction_h SET is_settle = 0 WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix, ''))) = 'PO'`,
-      [code]
+      `UPDATE t_transaction_h SET is_settle = 0
+       WHERE trans_code = ?
+         AND ${sqlEqualsStoredPrefixRef()}`,
+      [code, ...bindEqualsStoredPrefixRef(PREFIX_REF.PO)]
     );
     return;
   }
 
   const grnHeaders = await dbService.query<{ trans_code: string }>(
     `SELECT trans_code FROM t_transaction_h
-     WHERE UPPER(TRIM(COALESCE(prefix, ''))) = 'GRN'
+     WHERE ${sqlEqualsStoredPrefixRef()}
        AND refer_code = ?
        AND (is_void = 0 OR is_void IS NULL)`,
-    [code]
+    [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), code]
   );
   const grnCodes = (grnHeaders.data || []).map((r) => r.trans_code);
   const receivedPerItem: Record<string, number> = {};
@@ -211,8 +226,10 @@ async function syncPurchaseOrderSettlementFromGrns(poTransCode: string) {
   }
 
   await dbService.query(
-    `UPDATE t_transaction_h SET is_settle = ? WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix, ''))) = 'PO'`,
-    [fullyReceived ? 1 : 0, code]
+    `UPDATE t_transaction_h SET is_settle = ?
+     WHERE trans_code = ?
+       AND ${sqlEqualsStoredPrefixRef()}`,
+    [fullyReceived ? 1 : 0, code, ...bindEqualsStoredPrefixRef(PREFIX_REF.PO)]
   );
 }
 
@@ -252,11 +269,10 @@ export async function PUT(request: NextRequest) {
 
   try {
     await ensureInvoiceSubtypeColumns();
+    await ensurePrefixRefColumn();
     const hMap = await loadColumnMap('t_transaction_h');
     const dMap = await loadColumnMap('t_transaction_d');
     const tMap = await loadColumnMap('t_transaction_t');
-
-    const normalizedHeader = normalizeHeader(headerRaw, hMap, transCode);
 
     const existsRes = await dbService.query<{ c: number }>(
       'SELECT COUNT(*) AS c FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
@@ -266,23 +282,52 @@ export async function PUT(request: NextRequest) {
 
     const prevHeaderRes = await dbService.query<{
       prefix: string | null;
+      prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
       wh_code: string | null;
       shop_code: string | null;
-    }>('SELECT prefix, is_void, is_settle, wh_code, shop_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1', [transCode]);
+    }>(
+      'SELECT prefix, prefix_ref, is_void, is_settle, wh_code, shop_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+      [transCode]
+    );
     const prevH = prevHeaderRes.data?.[0];
     const prevDetailsRes = await dbService.query<{ item_code: string; qty: number }>(
       'SELECT item_code, qty FROM t_transaction_d WHERE trans_code = ?',
       [transCode]
     );
 
-    const rawPrefix = headerRaw.prefix !== undefined ? headerRaw.prefix : prevH?.prefix;
-    const effectivePrefix = String(rawPrefix ?? '')
-      .trim()
-      .toUpperCase();
+    const rawPrefixInput =
+      headerRaw.prefix_ref !== undefined
+        ? headerRaw.prefix_ref
+        : headerRaw.prefix !== undefined
+          ? headerRaw.prefix
+          : prevH?.prefix_ref || prevH?.prefix;
+    const resolved = await resolvePrefixPair(String(rawPrefixInput ?? ''));
+    const displayPrefix =
+      resolved?.prefix ||
+      String(headerRaw.prefix ?? prevH?.prefix ?? '')
+        .trim();
+    const prefixRefValue =
+      resolved?.prefix_ref ||
+      effectivePrefixRef(prevH?.prefix_ref, prevH?.prefix) ||
+      normalizeToPrefixRef(displayPrefix);
+    const storedRef = storedTransactionHeaderRef(prefixRefValue);
+
+    // Always persist both: prefix_ref is canonical; prefix mirrors it for legacy readers / NOT NULL columns
+    headerRaw.prefix_ref = storedRef;
+    headerRaw.prefix = storedRef;
+
+    const normalizedHeader = normalizeHeader(headerRaw, hMap, transCode);
+
+    const effectivePrefix = prefixRefValue;
+    const effectivePrefixDisplay =
+      resolved?.prefix ||
+      (await resolveDisplayPrefix(prefixRefValue)) ||
+      String(displayPrefix || '').trim();
+
     if (
-      effectivePrefix === 'INV' &&
+      effectivePrefix === PREFIX_REF.INV &&
       isMonthlyInvoiceSubtype(normalizedHeader.invoice_subtype ?? headerRaw.invoice_subtype)
     ) {
       if (!normalizedHeader.billing_period_from || !normalizedHeader.billing_period_to) {
@@ -292,6 +337,7 @@ export async function PUT(request: NextRequest) {
         );
       }
     }
+
     const rawIsVoid = headerRaw.is_void !== undefined ? headerRaw.is_void : prevH?.is_void;
     const effectiveIsVoid =
       rawIsVoid === true || rawIsVoid === 1 || String(rawIsVoid).toLowerCase() === 'true' ? 1 : 0;
@@ -300,7 +346,7 @@ export async function PUT(request: NextRequest) {
     const effectiveIsSettle =
       rawIsSettle === true || rawIsSettle === 1 || String(rawIsSettle).toLowerCase() === 'true' ? 1 : 0;
 
-    if (effectivePrefix === 'PO' && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
+    if (effectivePrefix === PREFIX_REF.PO && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
       return NextResponse.json(
         { success: false, error: 'Cannot void a settled purchase order' },
         { status: 400 }
@@ -319,23 +365,21 @@ export async function PUT(request: NextRequest) {
       return forbiddenResponse('You do not have permission for this transaction action');
     }
 
-    if (effectivePrefix === 'SO' && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
+    if (effectivePrefix === PREFIX_REF.SO && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
       return NextResponse.json(
         { success: false, error: 'Cannot void a confirmed sales order' },
         { status: 400 }
       );
     }
 
-    if (effectivePrefix === 'INV' && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
+    if (effectivePrefix === PREFIX_REF.INV && effectiveIsVoid === 1 && Number(prevH?.is_settle ?? 0) === 1) {
       return NextResponse.json(
         { success: false, error: 'Cannot void a settled invoice' },
         { status: 400 }
       );
     }
 
-    const prevPrefixUpper = String(prevH?.prefix ?? '')
-      .trim()
-      .toUpperCase();
+    const prevPrefixUpper = effectivePrefixRef(prevH?.prefix_ref, prevH?.prefix);
     const prevWasWarehouseQty =
       !!prevH && usesWarehouseQtySync(prevPrefixUpper) && !Number(prevH?.is_void ?? 0);
 
@@ -367,7 +411,7 @@ export async function PUT(request: NextRequest) {
     const newlyConfirmedSo =
       existsCnt > 0 &&
       !!prevH &&
-      effectivePrefix === 'SO' &&
+      effectivePrefix === PREFIX_REF.SO &&
       effectiveIsVoid === 0 &&
       Number(prevH.is_settle ?? 0) === 0 &&
       effectiveIsSettle === 1;
@@ -461,7 +505,7 @@ export async function PUT(request: NextRequest) {
     await syncSalesOrderWarehouseStageHold({
       transCode,
       shopCode: stockShopCode,
-      effectivePrefix,
+      effectivePrefix: effectivePrefixDisplay || effectivePrefix,
       effectiveIsVoid,
       effectiveIsSettle,
       detailQtyByItem: soDetailQtyMap,
@@ -471,18 +515,18 @@ export async function PUT(request: NextRequest) {
       await deductWarehouseForConfirmedSalesOrder(transCode, stockShopCode);
     }
 
-    if (existsCnt === 0 && effectivePrefix === 'INV' && effectiveIsVoid === 0) {
+    if (existsCnt === 0 && effectivePrefix === PREFIX_REF.INV && effectiveIsVoid === 0) {
       const soRef = String(normalizedHeader.refer_code ?? headerRaw.refer_code ?? '').trim();
       if (soRef.toUpperCase().startsWith('SO')) {
         await markSalesOrderInvoiced(soRef);
       }
     }
 
-    if (effectivePrefix === 'SO' && effectiveIsVoid === 1 && Number(prevH?.is_void ?? 0) === 0) {
+    if (effectivePrefix === PREFIX_REF.SO && effectiveIsVoid === 1 && Number(prevH?.is_void ?? 0) === 0) {
       await rollbackQuotationIfSalesOrderFromConversion(transCode);
     }
 
-    if (effectivePrefix === 'GRN') {
+    if (effectivePrefix === PREFIX_REF.GRN) {
       const refRes = await dbService.query<{ refer_code: string | null }>(
         'SELECT refer_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
         [transCode]
@@ -491,7 +535,7 @@ export async function PUT(request: NextRequest) {
       if (poRef) {
         await syncPurchaseOrderSettlementFromGrns(poRef);
       }
-    } else if (effectivePrefix === 'PO') {
+    } else if (effectivePrefix === PREFIX_REF.PO) {
       await syncPurchaseOrderSettlementFromGrns(transCode);
     }
 

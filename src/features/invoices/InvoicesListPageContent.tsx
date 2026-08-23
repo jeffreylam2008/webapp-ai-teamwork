@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 interface InvoiceTransaction {
   uid: number;
@@ -95,7 +96,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     setLoading(true);
     try {
       // Build URL with filters - focus on INV prefix for invoices
-      let url = `/api/transactions?prefix=INV&invoice_subtype=${encodeURIComponent(config.invoiceSubtype)}&page=${page}&pageSize=${pageSize}`;
+      let url = `/api/transactions?prefix=${encodeURIComponent(PREFIX_REF.INV)}&invoice_subtype=${encodeURIComponent(config.invoiceSubtype)}&page=${page}&pageSize=${pageSize}`;
       
       // Add date range if set
       if (dateRange[0] && dateRange[1]) {

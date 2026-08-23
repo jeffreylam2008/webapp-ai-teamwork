@@ -4,6 +4,7 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { deductWarehouseForConfirmedSalesOrder } from '@/lib/salesOrderConfirmWarehouse';
+import { PREFIX_REF, effectivePrefixRef, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 /**
  * POST /api/transactions/confirm-sales-order
@@ -37,12 +38,13 @@ export async function POST(request: NextRequest) {
   try {
     const hdr = await dbService.query<{
       prefix: string | null;
+      prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
       wh_code: string | null;
       shop_code: string | null;
     }>(
-      'SELECT prefix, is_void, is_settle, wh_code, shop_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+      'SELECT prefix, prefix_ref, is_void, is_settle, wh_code, shop_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
       [transCode]
     );
 
@@ -51,7 +53,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Sales order not found' }, { status: 404 });
     }
 
-    if (String(row.prefix || '').trim().toUpperCase() !== 'SO') {
+    if (effectivePrefixRef(row.prefix_ref, row.prefix) !== PREFIX_REF.SO) {
       return NextResponse.json({ success: false, error: 'Not a sales order transaction' }, { status: 400 });
     }
 
@@ -79,17 +81,18 @@ export async function POST(request: NextRequest) {
 
     const dnCheck = await dbService.query<{ c: number }>(
       `SELECT COUNT(*) AS c FROM t_transaction_h
-       WHERE UPPER(TRIM(COALESCE(prefix,''))) = 'DN'
+       WHERE ${sqlEqualsStoredPrefixRef()}
          AND refer_code = ?
          AND COALESCE(is_void, 0) = 0`,
-      [transCode]
+      [...bindEqualsStoredPrefixRef(PREFIX_REF.DN), transCode]
     );
     const hasDeliveryNote = Number((dnCheck.data?.[0] as { c?: unknown })?.c ?? 0) > 0;
 
     await dbService.query('START TRANSACTION');
     await dbService.query(
-      `UPDATE t_transaction_h SET is_settle = 1, modify_date = NOW() WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO'`,
-      [transCode]
+      `UPDATE t_transaction_h SET is_settle = 1, modify_date = NOW()
+       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
     );
     await clearSalesOrderWarehouseStageHold(transCode);
     if (!hasDeliveryNote) {
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
       request,
       action: 'CONFIRM',
       transCode,
-      prefix: 'SO',
+      prefix: PREFIX_REF.SO,
     });
 
     return NextResponse.json({

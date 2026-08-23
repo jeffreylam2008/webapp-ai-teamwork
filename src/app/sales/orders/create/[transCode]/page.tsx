@@ -22,6 +22,7 @@ import { getSalesOrderCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getCommonLanguageTexts } from '@/lib/i18n/common';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
 import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import {
@@ -101,7 +102,7 @@ export default function CreateOrderPage() {
 
     form.setFieldsValue({
       ...(isDraft ? {} : { trans_code: transCode }),
-      prefix: 'SO',
+      prefix_ref: PREFIX_REF.SO,
       transaction_date: dayjs(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,7 +337,7 @@ export default function CreateOrderPage() {
         transCode: saveCode,
         headerData: {
           ...formValues,
-          prefix: 'SO',
+          prefix_ref: PREFIX_REF.SO,
           total: totalAmount,
           employee_code: user ? String(user.employee_code) : undefined,
           quotation_date: transactionDate,

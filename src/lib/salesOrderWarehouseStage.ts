@@ -1,5 +1,6 @@
 import dbService from '@/lib/database';
 import { sqlNow } from '@/lib/datetime';
+import { PREFIX_REF, normalizeToPrefixRef } from '@/lib/prefixRef';
 
 let refColumnCached: boolean | null = null;
 
@@ -47,7 +48,7 @@ export async function syncSalesOrderWarehouseStageHold(params: {
   const code = String(transCode || '').trim();
   if (!code) return;
 
-  if (String(effectivePrefix || '').trim().toUpperCase() !== 'SO') {
+  if (normalizeToPrefixRef(effectivePrefix) !== PREFIX_REF.SO) {
     await clearSalesOrderWarehouseStageHold(code);
     return;
   }

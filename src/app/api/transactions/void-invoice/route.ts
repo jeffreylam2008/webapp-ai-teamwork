@@ -3,6 +3,7 @@ import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { rollbackSalesOrderIfInvoiceVoided } from '@/lib/salesOrderInvoiceConversion';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 /**
  * POST /api/transactions/void-invoice
@@ -35,16 +36,20 @@ export async function POST(request: NextRequest) {
   try {
     const hdr = await dbService.query<{
       prefix: string | null;
+      prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
-    }>('SELECT prefix, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1', [transCode]);
+    }>(
+      'SELECT prefix, prefix_ref, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+      [transCode]
+    );
 
     const row = hdr.data?.[0];
     if (!row) {
       return NextResponse.json({ success: false, error: 'Invoice not found' }, { status: 404 });
     }
 
-    if (String(row.prefix || '').trim().toUpperCase() !== 'INV') {
+    if (!matchesPrefixRef(row.prefix, row.prefix_ref, PREFIX_REF.INV)) {
       return NextResponse.json({ success: false, error: 'Not an invoice transaction' }, { status: 400 });
     }
 
@@ -61,8 +66,8 @@ export async function POST(request: NextRequest) {
 
     await dbService.query(
       `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
-       WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'INV'`,
-      [transCode]
+       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.INV)]
     );
 
     await rollbackSalesOrderIfInvoiceVoided(transCode);
@@ -71,7 +76,7 @@ export async function POST(request: NextRequest) {
       request,
       action: 'VOID',
       transCode,
-      prefix: 'INV',
+      prefix: PREFIX_REF.INV,
     });
 
     return NextResponse.json({

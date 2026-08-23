@@ -24,22 +24,26 @@ export function getCurrentSuffix(): string {
   return `${year}${month}`;
 }
 
+import { DISPLAY_TO_PREFIX_REF, DEFAULT_DISPLAY_BY_REF } from '@/lib/prefixRef';
+
 /**
- * Validate prefix type
- * @param prefix - The prefix to validate
- * @returns boolean - Whether the prefix is valid
+ * Soft client-side hint only. Authoritative validation is t_prefix via
+ * /api/transaction-generator/next (resolvePrefixPair).
  */
 export function isValidPrefix(prefix: string): boolean {
-  const validPrefixes = ['DN', 'INV', 'QTA', 'PO', 'SO', 'CR', 'DR', 'GRN', 'ADJ', 'ST']; // ADJ = Adjustment, ST = Stocktake
-  return validPrefixes.includes(prefix.toUpperCase());
+  const raw = String(prefix || '').trim().toUpperCase();
+  if (!raw) return false;
+  if (raw.startsWith('_') && raw.length >= 2) return true;
+  if (DISPLAY_TO_PREFIX_REF[raw]) return true;
+  if (DEFAULT_DISPLAY_BY_REF[raw]) return true;
+  return raw.length >= 1 && raw.length <= 10;
 }
 
 /**
- * Get all valid prefix types
- * @returns string[] - Array of valid prefixes
+ * Default display seeds — live list comes from t_prefix / /api/prefixes.
  */
 export function getValidPrefixes(): string[] {
-  return ['DN', 'INV', 'QTA', 'PO', 'SO', 'CR', 'DR', 'GRN', 'ADJ', 'ST'];
+  return Object.values(DEFAULT_DISPLAY_BY_REF);
 }
 
 /**
@@ -97,15 +101,9 @@ export function parseGeneratedTransactionCode(transCode: string): {
 } | null {
   const code = String(transCode || '').trim().toUpperCase();
   if (!code) return null;
-  const prefixes = [...getValidPrefixes()].sort((a, b) => b.length - a.length);
-  for (const p of prefixes) {
-    if (!code.startsWith(p)) continue;
-    const rest = code.slice(p.length);
-    const m = rest.match(/^(\d{4})-(\d+)$/);
-    if (!m) continue;
-    const lastNumber = parseInt(m[2], 10);
-    if (!Number.isFinite(lastNumber) || lastNumber < 1) continue;
-    return { prefix: p, suffix: m[1], lastNumber };
-  }
-  return null;
+  const m = code.match(/^(.+?)(\d{4})-(\d+)$/);
+  if (!m) return null;
+  const lastNumber = parseInt(m[3], 10);
+  if (!Number.isFinite(lastNumber) || lastNumber < 1) return null;
+  return { prefix: m[1], suffix: m[2], lastNumber };
 }

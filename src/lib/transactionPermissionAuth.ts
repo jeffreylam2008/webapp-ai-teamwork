@@ -4,11 +4,21 @@ import { FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken, type AuthUser } from '@/lib/authUtils';
 import { accessRowsToPermissionKeys, type EmployeeAccessRow } from '@/lib/employeeAccess';
+import { PREFIX_REF, normalizeToPrefixRef } from '@/lib/prefixRef';
 
 export type TransactionPermissionAction = 'view' | 'create' | 'edit' | 'delete';
 
-/** t_transaction_h.prefix values mapped to FUNCTION_PERMISSION_ROWS.id */
+/** t_prefix.prefix_ref (stable) → FUNCTION_PERMISSION_ROWS.id. Display codes also accepted via normalize. */
 export const DB_PREFIX_TO_FUNCTION_ID: Record<string, (typeof FUNCTION_PERMISSION_ROWS)[number]['id']> = {
+  [PREFIX_REF.PO]: 'po',
+  [PREFIX_REF.INV]: 'invoice',
+  [PREFIX_REF.SO]: 'sales_order',
+  [PREFIX_REF.QTA]: 'quotation',
+  [PREFIX_REF.GRN]: 'grn',
+  [PREFIX_REF.ST]: 'stocktake',
+  [PREFIX_REF.DN]: 'delivery_note',
+  [PREFIX_REF.ADJ]: 'adjustment',
+  // Legacy display aliases (pre-migration callers)
   PO: 'po',
   INV: 'invoice',
   SO: 'sales_order',
@@ -20,7 +30,9 @@ export const DB_PREFIX_TO_FUNCTION_ID: Record<string, (typeof FUNCTION_PERMISSIO
 };
 
 function rowForDbPrefix(prefix: string) {
-  const funcId = DB_PREFIX_TO_FUNCTION_ID[String(prefix || '').trim().toUpperCase()];
+  const raw = String(prefix || '').trim().toUpperCase();
+  const ref = normalizeToPrefixRef(raw);
+  const funcId = DB_PREFIX_TO_FUNCTION_ID[ref] || DB_PREFIX_TO_FUNCTION_ID[raw];
   if (!funcId) return undefined;
   return FUNCTION_PERMISSION_ROWS.find((r) => r.id === funcId);
 }
@@ -34,11 +46,20 @@ export function permissionKeyForDbPrefix(
   return row[action];
 }
 
+/** Filters a list of display codes or prefix_refs; returns normalized prefix_refs the user can view. */
 export function filterDbPrefixesByView(keys: Set<string>, prefixes: string[]): string[] {
-  return prefixes.filter((p) => {
-    const key = permissionKeyForDbPrefix(p, 'view');
-    return key != null && keys.has(key);
-  });
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of prefixes) {
+    const ref = normalizeToPrefixRef(p);
+    if (!ref || seen.has(ref)) continue;
+    const key = permissionKeyForDbPrefix(ref, 'view');
+    if (key != null && keys.has(key)) {
+      seen.add(ref);
+      out.push(ref);
+    }
+  }
+  return out;
 }
 
 export async function loadPermissionKeysForUser(

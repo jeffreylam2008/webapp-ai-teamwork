@@ -4,9 +4,12 @@ import { getCurrentSuffix, generateSessionId } from '@/utils/transactionUtils';
 import { TransactionGeneratorMiddleware } from '@/middleware/transactionGenerator';
 import { logTransactionAction } from '@/lib/audit';
 import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
+import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 export async function POST(request: NextRequest) {
   try {
+    await ensurePrefixRefColumn();
     const body = await request.json();
     const { quotationCode } = body;
     
@@ -25,12 +28,13 @@ export async function POST(request: NextRequest) {
     try {
       // Check if quotation exists and is not already converted
       const quotationCheck = await dbService.query(
-        `SELECT trans_code, prefix, cust_code, refer_code, shop_code, 
+        `SELECT trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code, 
                 total, employee_code, remark, create_date, valid_until_date,
                 is_convert
          FROM t_transaction_h 
-         WHERE trans_code = ? AND prefix = 'QTA'`,
-        [quotationCode]
+         WHERE trans_code = ?
+           AND ${sqlEqualsStoredPrefixRef()}`,
+        [quotationCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.QTA)]
       );
 
       if (!quotationCheck.data || quotationCheck.data.length === 0) {
@@ -57,15 +61,16 @@ export async function POST(request: NextRequest) {
       const sessionId = `convert_${Date.now()}_${generateSessionId()}`;
       
       const orderNumberResult = await TransactionGeneratorMiddleware.generateNext({
-        prefix: 'SO',
+        prefix: PREFIX_REF.SO,
         suffix: suffix,
-        sessionId: sessionId
+        sessionId: sessionId,
       });
       
       if (!orderNumberResult.success || !orderNumberResult.transactionCode) {
         await dbService.query('ROLLBACK');
+        const genErr = !orderNumberResult.success ? orderNumberResult.error : 'Failed to generate Sales Order number';
         return NextResponse.json(
-          { success: false, error: orderNumberResult.error || 'Failed to generate Sales Order number' },
+          { success: false, error: genErr },
           { status: 500 }
         );
       }
@@ -92,12 +97,14 @@ export async function POST(request: NextRequest) {
       // Insert Sales Order (SO) header as draft (is_settle = 0)
       await dbService.query(
         `INSERT INTO t_transaction_h (
-          trans_code, prefix, cust_code, refer_code, shop_code,
+          trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code,
           total, employee_code, remark, create_date, modify_date,
           quotation_code, is_void, is_convert, is_settle
-        ) VALUES (?, 'SO', ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, 0, 0, 0)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), ?, 0, 0, 0)`,
         [
           orderCode,
+          PREFIX_REF.SO,
+          PREFIX_REF.SO,
           quotation.cust_code,
           quotation.refer_code,
           quotation.shop_code,
@@ -187,14 +194,14 @@ export async function POST(request: NextRequest) {
         request,
         action: 'CONVERT',
         transCode: quotationCode,
-        prefix: 'QTA',
+        prefix: PREFIX_REF.QTA,
         details: { convertedTo: orderCode },
       });
       void logTransactionAction({
         request,
         action: 'CREATE',
         transCode: orderCode,
-        prefix: 'SO',
+        prefix: PREFIX_REF.SO,
         details: { convertedFrom: quotationCode },
       });
 

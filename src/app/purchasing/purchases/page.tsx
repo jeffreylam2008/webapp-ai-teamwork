@@ -14,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import {
   purchaseDraftCreatePath,
   PURCHASE_CLONE_KEY_PREFIX,
@@ -84,7 +85,7 @@ export default function PurchaseOrdersPage() {
     async (page: number = 1, pageSize: number = 20) => {
       setLoading(true);
       try {
-        let url = `/api/transactions?prefix=PO&page=${page}&pageSize=${pageSize}`;
+        let url = `/api/transactions?prefix=${encodeURIComponent(PREFIX_REF.PO)}&page=${page}&pageSize=${pageSize}`;
         if (dateRange[0] && dateRange[1]) {
           url += `&start_date=${dateRange[0].format('YYYY-MM-DD')}&end_date=${dateRange[1].format('YYYY-MM-DD')}`;
         }

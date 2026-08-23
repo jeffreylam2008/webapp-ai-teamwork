@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 /**
  * DELETE /api/transactions/delete-quotation
  * Body: { transCode: string }
- *
- * Removes a quotation (QTA) and its lines/payment rows.
- * Converted quotations (is_convert = 1) cannot be deleted.
  */
 export async function DELETE(request: NextRequest) {
   try {
@@ -21,9 +19,10 @@ export async function DELETE(request: NextRequest) {
     const headerResult = await dbService.query<{
       trans_code: string;
       prefix: string;
+      prefix_ref: string | null;
       is_convert: number | null;
     }>(
-      `SELECT trans_code, prefix, is_convert FROM t_transaction_h WHERE trans_code = ?`,
+      `SELECT trans_code, prefix, prefix_ref, is_convert FROM t_transaction_h WHERE trans_code = ?`,
       [transCode]
     );
 
@@ -32,7 +31,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Quotation not found' }, { status: 404 });
     }
 
-    if (String(header.prefix).toUpperCase() !== 'QTA') {
+    if (!matchesPrefixRef(header.prefix, header.prefix_ref, PREFIX_REF.QTA)) {
       return NextResponse.json(
         { success: false, error: 'Only quotation (QTA) transactions can be deleted here' },
         { status: 400 }
@@ -64,7 +63,7 @@ export async function DELETE(request: NextRequest) {
       request,
       action: 'DELETE',
       transCode,
-      prefix: 'QTA',
+      prefix: PREFIX_REF.QTA,
     });
     return NextResponse.json({
       success: true,

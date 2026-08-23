@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { usePermissions } from '@/hooks/usePermissions';
 import { buildWarehouseStockPrefixList } from '@/config/transactionPermissions';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
 import {
   getTransactionDetailStatusKey,
   transactionDetailReferenceLink,
@@ -20,6 +21,10 @@ import {
   TransactionDetailInfoCard,
 } from '@/components/transactionDetailInfo';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  isPrintPopupBlocked,
+  openTransactionPrintWindow,
+} from '@/lib/openTransactionPrintWindow';
 
 const { Text } = Typography;
 
@@ -31,6 +36,7 @@ interface TransactionHeader {
   quotation_code?: string;
   refer_code?: string;
   prefix?: string;
+  prefix_ref?: string;
   total?: number;
   employee_code?: string;
   shop_code?: string;
@@ -65,7 +71,7 @@ interface FunctionBarProps {
   handleNavigate: (index: number) => void;
   router: { push: (path: string) => void };
   transCode?: string;
-  prefix?: string;
+  prefixRef?: string;
   isVoid?: boolean;
   showEditStocktake?: boolean;
   showEditAdjustment?: boolean;
@@ -84,7 +90,7 @@ const FunctionBar: React.FC<FunctionBarProps> = ({
   handleNavigate,
   router,
   transCode,
-  prefix,
+  prefixRef,
   isVoid,
   showEditStocktake,
   showEditAdjustment,
@@ -106,7 +112,7 @@ const FunctionBar: React.FC<FunctionBarProps> = ({
           {t.print}
         </Button>
       )}
-      {showEditStocktake && prefix === 'ST' && transCode && !isVoid && (
+      {showEditStocktake && prefixRef === PREFIX_REF.ST && transCode && !isVoid && (
         <Button
           type="primary"
           icon={<EditOutlined />}
@@ -117,7 +123,7 @@ const FunctionBar: React.FC<FunctionBarProps> = ({
           {t.editStocktake}
         </Button>
       )}
-      {showEditAdjustment && prefix === 'ADJ' && transCode && !isVoid && (
+      {showEditAdjustment && prefixRef === PREFIX_REF.ADJ && transCode && !isVoid && (
         <Button
           type="primary"
           icon={<EditOutlined />}
@@ -149,9 +155,14 @@ const FunctionBar: React.FC<FunctionBarProps> = ({
   </div>
 );
 
-function transactionKindFromPrefix(prefix: string | undefined, t: DetailTexts) {
-  if (prefix === 'ADJ') return t.kindAdjustment;
-  if (prefix === 'ST') return t.kindStocktake;
+function headerTypeRef(header: { prefix?: string; prefix_ref?: string } | null | undefined): string {
+  if (!header) return '';
+  return effectivePrefixRef(header.prefix_ref, header.prefix);
+}
+
+function transactionKindFromPrefixRef(prefixRef: string | undefined, t: DetailTexts) {
+  if (prefixRef === PREFIX_REF.ADJ) return t.kindAdjustment;
+  if (prefixRef === PREFIX_REF.ST) return t.kindStocktake;
   return t.kindGrn;
 }
 
@@ -208,7 +219,7 @@ function TransactionDetailContent() {
 
   const fetchTransactionList = useCallback(async (signal?: AbortSignal) => {
     try {
-      const prefixParam = allowedStockPrefixes || 'GRN';
+      const prefixParam = allowedStockPrefixes || PREFIX_REF.GRN;
       const response = await fetchWithAuth(
         `/api/transactions?prefix=${encodeURIComponent(prefixParam)}`,
         token,
@@ -271,21 +282,23 @@ function TransactionDetailContent() {
   const statusDisplay = (key: string) => (t.rowStatus as Record<string, string>)[key] ?? key;
 
   const handleVoidGRN = () => {
+    const typeRef = headerTypeRef(header);
     if (
       !header?.trans_code ||
-      (header.prefix !== 'GRN' && header.prefix !== 'ADJ' && header.prefix !== 'ST') ||
+      (typeRef !== PREFIX_REF.GRN && typeRef !== PREFIX_REF.ADJ && typeRef !== PREFIX_REF.ST) ||
       header.is_void === 1
     )
       return;
-    const prefix = header.prefix as string;
-    const kind = transactionKindFromPrefix(prefix, t.detail);
+    const kind = transactionKindFromPrefixRef(typeRef, t.detail);
     modal.confirm({
       title: t.detail.voidTitle(kind),
       content: (
         <>
           <p>{t.detail.voidConfirmLine(kind, header.trans_code)}</p>
-          {(prefix === 'ADJ' || prefix === 'ST') && <p>{t.detail.voidAdjStkHint}</p>}
-          {prefix === 'GRN' && <p>{t.detail.voidGrnHint}</p>}
+          {(typeRef === PREFIX_REF.ADJ || typeRef === PREFIX_REF.ST) && (
+            <p>{t.detail.voidAdjStkHint}</p>
+          )}
+          {typeRef === PREFIX_REF.GRN && <p>{t.detail.voidGrnHint}</p>}
           <p>
             <strong>{t.detail.voidCannotUndo}</strong>
           </p>
@@ -298,7 +311,7 @@ function TransactionDetailContent() {
         setVoiding(true);
         try {
           const response =
-            prefix === 'ST'
+            typeRef === PREFIX_REF.ST
               ? await fetchWithAuth('/api/transactions/delete-stocktake', token, {
                   method: 'DELETE',
                   headers: { 'Content-Type': 'application/json' },
@@ -309,19 +322,19 @@ function TransactionDetailContent() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     transCode: header.trans_code,
-                    headerData: { prefix, is_void: 1 },
+                    headerData: { prefix_ref: typeRef, is_void: 1 },
                   }),
                 });
           const result = await response.json();
           if (!result.success) throw new Error(result.error || t.detail.voidTitle(kind));
           messageApi.success(
-            prefix === 'ADJ'
+            typeRef === PREFIX_REF.ADJ
               ? t.detail.voidSuccessAdj
-              : prefix === 'ST'
+              : typeRef === PREFIX_REF.ST
                 ? t.detail.voidSuccessStk
                 : t.detail.voidSuccessGrn
           );
-          if (prefix === 'ST') {
+          if (typeRef === PREFIX_REF.ST) {
             router.push('/warehouse/stock');
           } else {
             void fetchTransactionHeader();
@@ -342,7 +355,8 @@ function TransactionDetailContent() {
     }
   };
 
-  const hidePricingColumns = header?.prefix === 'GRN' || header?.prefix === 'DN';
+  const typeRef = headerTypeRef(header);
+  const hidePricingColumns = typeRef === PREFIX_REF.GRN || typeRef === PREFIX_REF.DN;
 
   const detailColumns = useMemo(() => {
     const base: Parameters<typeof Table>[0]['columns'] = [
@@ -446,32 +460,37 @@ function TransactionDetailContent() {
             handleNavigate={handleNavigate}
             router={router}
             transCode={header.trans_code}
-            prefix={header.prefix}
+            prefixRef={headerTypeRef(header)}
             isVoid={header.is_void === 1}
             showEditStocktake={
-              header.prefix === 'ST' && header.is_void !== 1 && can('edit_stocktake')
+              headerTypeRef(header) === PREFIX_REF.ST &&
+              header.is_void !== 1 &&
+              can('edit_stocktake')
             }
             showEditAdjustment={
-              header.prefix === 'ADJ' && header.is_void !== 1 && can('edit_adjustment')
+              headerTypeRef(header) === PREFIX_REF.ADJ &&
+              header.is_void !== 1 &&
+              can('edit_adjustment')
             }
             showVoidGrn={
               header.is_void !== 1 &&
-              ((header.prefix === 'GRN' && can('void_grn')) ||
-                (header.prefix === 'ADJ' && can('void_adjustment')) ||
-                (header.prefix === 'ST' && can('void_stocktake')))
+              ((headerTypeRef(header) === PREFIX_REF.GRN && can('void_grn')) ||
+                (headerTypeRef(header) === PREFIX_REF.ADJ && can('void_adjustment')) ||
+                (headerTypeRef(header) === PREFIX_REF.ST && can('void_stocktake')))
             }
             onVoidGrn={handleVoidGRN}
             voiding={voiding}
             onBackToStock={goBackToStock}
-            showPrint={header.prefix === 'DN'}
+            showPrint={headerTypeRef(header) === PREFIX_REF.DN}
             onPrint={() => {
               if (!header.trans_code) return;
-              const langParam = lang ? `?lang=${encodeURIComponent(lang)}` : '';
-              window.open(
-                `/warehouse/stock/print/${encodeURIComponent(header.trans_code)}${langParam}`,
-                '_blank',
-                'width=820,height=900,scrollbars=yes'
+              const popup = openTransactionPrintWindow(
+                `/warehouse/stock/print/${encodeURIComponent(header.trans_code)}`,
+                { lang }
               );
+              if (isPrintPopupBlocked(popup)) {
+                messageApi.warning('Please allow pop-ups to open the print preview.');
+              }
             }}
             t={t.detail}
           />
@@ -488,7 +507,8 @@ function TransactionDetailContent() {
                     <Text strong>{header.trans_code || '-'}</Text>
                   </TransactionDetailBorderedDescriptions.Item>
                   <TransactionDetailBorderedDescriptions.Item label={t.detail.labelPrefix}>{header.prefix || '-'}</TransactionDetailBorderedDescriptions.Item>
-                  {header.prefix !== 'GRN' && header.prefix !== 'DN' && (
+                  {headerTypeRef(header) !== PREFIX_REF.GRN &&
+                    headerTypeRef(header) !== PREFIX_REF.DN && (
                     <TransactionDetailBorderedDescriptions.Item label={t.detail.labelTotalAmount}>
                       <Text strong style={{ color: '#1890ff', fontSize: '16px' }}>
                         {formatPrice(header.total)}

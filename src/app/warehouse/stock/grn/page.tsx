@@ -16,6 +16,8 @@ import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { getPurchaseDefaultPrice } from '@/lib/itemPricing';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import {
   ensureBrowserSessionId,
   reserveGrnNumber,
@@ -57,6 +59,7 @@ interface Product {
   chi_name?: string;
   unit?: string;
   price?: number;
+  purchase_price?: number | null;
 }
 
 interface FormValues {
@@ -434,7 +437,7 @@ function GRNPageContent() {
       item_name: product.eng_name,
       chi_name: product.chi_name || '',
       quantity: 1,
-      price: Number(product.price || 0),
+      price: getPurchaseDefaultPrice(product),
       unit: product.unit,
       discount: 0,
     };
@@ -487,7 +490,7 @@ function GRNPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transCode: editTransCode,
-          headerData: { prefix: 'GRN', is_void: 1 },
+          headerData: { prefix_ref: PREFIX_REF.GRN, is_void: 1 },
         }),
       });
       const result = await response.json();
@@ -513,7 +516,7 @@ function GRNPageContent() {
       const payload = {
         transCode,
         headerData: {
-          prefix: 'GRN',
+          prefix_ref: PREFIX_REF.GRN,
           supp_code: values.supp_code,
           shop_code,
           wh_code: values.wh_code,

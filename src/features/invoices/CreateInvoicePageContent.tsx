@@ -17,6 +17,7 @@ import { App, Button, Form, Input, type InputRef, Select, InputNumber, Card, Row
 import dayjs from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
 import { useAuth } from '@/contexts/AuthContext';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
@@ -111,7 +112,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
     fetchFormData();
 
     form.setFieldsValue({
-      prefix: 'INV',
+      prefix_ref: PREFIX_REF.INV,
       transaction_date: dayjs(),
       invoice_subtype: invoiceSubtype,
       ...(isMonthly
@@ -171,7 +172,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         billing_period_from: h.billing_period_from ? dayjs(String(h.billing_period_from)) : undefined,
         billing_period_to: h.billing_period_to ? dayjs(String(h.billing_period_to)) : undefined,
         trans_code: isDraft ? undefined : transCode,
-        prefix: 'INV',
+        prefix_ref: PREFIX_REF.INV,
         transaction_date: dayjs(),
       });
 
@@ -468,7 +469,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
         transCode: saveCode,
         headerData: {
           ...restHeader,
-          prefix: 'INV',
+          prefix_ref: PREFIX_REF.INV,
           invoice_subtype: subtype,
           billing_period_from: isMonthlyInvoiceSubtype(subtype) ? billingFrom : null,
           billing_period_to: isMonthlyInvoiceSubtype(subtype) ? billingTo : null,

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
+import {
+  PREFIX_REF,
+  bindEqualsStoredPrefixRef,
+  sqlEqualsStoredPrefixRef,
+} from '@/lib/prefixRef';
 
 interface PreviousItemRow {
   item_code: string;
@@ -33,11 +38,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'cust_code is required' }, { status: 400 });
     }
 
-    const params: string[] = [custCode];
     let excludeClause = '';
+    const queryParams: string[] = [custCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.QTA)];
     if (excludeTransCode) {
       excludeClause = ' AND h.trans_code <> ?';
-      params.push(excludeTransCode);
+      queryParams.push(excludeTransCode);
     }
 
     const result = await dbService.query<PreviousItemRow>(
@@ -54,10 +59,10 @@ export async function GET(request: NextRequest) {
        FROM t_transaction_d d
        INNER JOIN t_transaction_h h ON h.trans_code = d.trans_code
        WHERE h.cust_code = ?
-         AND h.prefix = 'QTA'
+         AND ${sqlEqualsStoredPrefixRef('h')}
          ${excludeClause}
        ORDER BY h.create_date DESC, d.uid ASC`,
-      params
+      queryParams
     );
 
     const rows = result.data || [];

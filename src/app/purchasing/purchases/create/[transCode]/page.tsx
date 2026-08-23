@@ -21,8 +21,10 @@ import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getPurchaseOrderCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
 import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
+import { getPurchaseDefaultPrice } from '@/lib/itemPricing';
 import { ensureBrowserSessionId } from '@/lib/transactionDraft';
 import {
   isPurchaseDraftTransCode,
@@ -34,7 +36,7 @@ import {
 
 interface FormData {
   suppliers: Array<{ supp_code: string; name: string; phone_1: string; email_1: string; pm_code?: string | null }>;
-  products: Array<{ item_code: string; eng_name: string; chi_name: string; unit: string; price: number }>;
+  products: Array<{ item_code: string; eng_name: string; chi_name: string; unit: string; price: number; purchase_price?: number | null }>;
   shops: Array<{ shop_code: string; name: string; is_warehouse?: number | string | boolean; default_whcode?: string | null }>;
   employees: Array<{ employee_code: string; name: string }>;
   paymentMethods: Array<{ pm_code: string; payment_method: string }>;
@@ -103,7 +105,7 @@ export default function CreatePurchaseOrderPage() {
 
     form.setFieldsValue({
       ...(isDraft ? {} : { trans_code: transCode }),
-      prefix: 'PO',
+      prefix_ref: PREFIX_REF.PO,
       transaction_date: dayjs(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,7 +284,7 @@ export default function CreatePurchaseOrderPage() {
         return updated;
       }
 
-      const price = Number(product.price || 0);
+      const price = getPurchaseDefaultPrice(product);
       return [
         ...prev,
         {
@@ -442,7 +444,7 @@ export default function CreatePurchaseOrderPage() {
           remark: fv.remark,
           pm_code: fv.pm_code,
           trans_code: saveCode,
-          prefix: 'PO',
+          prefix_ref: PREFIX_REF.PO,
           total: totalAmount,
           employee_code: user ? String(user.employee_code) : undefined,
           quotation_date: transactionDate,

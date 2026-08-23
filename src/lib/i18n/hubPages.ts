@@ -1,7 +1,60 @@
 import type { AppLanguage } from './language';
 
 export type HubPagesTexts = {
-  home: { title: string; line1: string; line2: string };
+  home: {
+    title: string;
+    description: string;
+    overview: string;
+    workflow: string;
+    periodThisMonth: string;
+    metrics: {
+      monthSales: string;
+      invoices: string;
+      suppliers: string;
+      customers: string;
+      users: string;
+      warehousePending: string;
+      draftSalesOrders: string;
+      purchaseOrders: string;
+    };
+    workflowGroups: {
+      sales: string;
+      purchasing: string;
+      warehouse: string;
+      reports: string;
+      masterData: string;
+      administration: string;
+    };
+    links: {
+      invoices: string;
+      invoicesDesc: string;
+      salesOrders: string;
+      salesOrdersDesc: string;
+      quotations: string;
+      quotationsDesc: string;
+      purchases: string;
+      purchasesDesc: string;
+      warehouseStock: string;
+      warehouseStockDesc: string;
+      deliveryNote: string;
+      deliveryNoteDesc: string;
+      grn: string;
+      grnDesc: string;
+      salesReport: string;
+      salesReportDesc: string;
+      warehouseReport: string;
+      warehouseReportDesc: string;
+      customers: string;
+      customersDesc: string;
+      suppliers: string;
+      suppliersDesc: string;
+      products: string;
+      productsDesc: string;
+      users: string;
+      usersDesc: string;
+    };
+    failedLoad: string;
+  };
   productsHub: {
     title: string;
     description: string;
@@ -42,9 +95,58 @@ export type HubPagesTexts = {
 
 const EN: HubPagesTexts = {
   home: {
-    title: 'Welcome to the Home Page!',
-    line1: 'This is the main content area for the home page.',
-    line2: 'Click on different menu items in the sidebar to navigate to different pages.',
+    title: 'Dashboard',
+    description: 'Overview of key metrics and shortcuts to daily workflows.',
+    overview: 'Overview',
+    workflow: 'Workflow',
+    periodThisMonth: 'This month',
+    metrics: {
+      monthSales: 'Sales (this month)',
+      invoices: 'Invoices',
+      suppliers: 'Vendors',
+      customers: 'Customers',
+      users: 'Users',
+      warehousePending: 'Warehouse pending',
+      draftSalesOrders: 'Draft sales orders',
+      purchaseOrders: 'Purchase orders',
+    },
+    workflowGroups: {
+      sales: 'Sales',
+      purchasing: 'Purchasing',
+      warehouse: 'Warehouse',
+      reports: 'Reports',
+      masterData: 'Master data',
+      administration: 'Administration',
+    },
+    links: {
+      invoices: 'Invoices',
+      invoicesDesc: 'Create and manage customer invoices',
+      salesOrders: 'Sales orders',
+      salesOrdersDesc: 'Confirm orders and track fulfilment',
+      quotations: 'Quotations',
+      quotationsDesc: 'Prepare and convert quotations',
+      purchases: 'Purchase orders',
+      purchasesDesc: 'Order from suppliers',
+      warehouseStock: 'Warehouse stock',
+      warehouseStockDesc: 'GRN, delivery, adjustment, and stocktake',
+      deliveryNote: 'Delivery notes',
+      deliveryNoteDesc: 'Ship confirmed sales orders',
+      grn: 'Goods received',
+      grnDesc: 'Receive supplier deliveries into stock',
+      salesReport: 'Sales report',
+      salesReportDesc: 'Sales, cost, and profit by invoice or product',
+      warehouseReport: 'Warehouse report',
+      warehouseReportDesc: 'Track stock in and out movements',
+      customers: 'Customers',
+      customersDesc: 'Customer master records',
+      suppliers: 'Vendors',
+      suppliersDesc: 'Supplier master records',
+      products: 'Products',
+      productsDesc: 'Items and categories',
+      users: 'Users',
+      usersDesc: 'Accounts and access control',
+    },
+    failedLoad: 'Failed to load dashboard metrics',
   },
   productsHub: {
     title: 'Products Management',
@@ -86,9 +188,58 @@ const EN: HubPagesTexts = {
 
 const ZH_HANT: HubPagesTexts = {
   home: {
-    title: '歡迎使用首頁！',
-    line1: '這裡是首頁的主要內容區域。',
-    line2: '請點選側邊選單以前往各功能頁面。',
+    title: '儀表板',
+    description: '關鍵指標總覽與日常作業快速連結。',
+    overview: '總覽',
+    workflow: '作業流程',
+    periodThisMonth: '本月',
+    metrics: {
+      monthSales: '銷售額（本月）',
+      invoices: '發票數',
+      suppliers: '供應商',
+      customers: '客戶',
+      users: '用戶',
+      warehousePending: '倉庫待辦',
+      draftSalesOrders: '草稿銷售單',
+      purchaseOrders: '採購單',
+    },
+    workflowGroups: {
+      sales: '銷售',
+      purchasing: '採購',
+      warehouse: '倉庫',
+      reports: '報表',
+      masterData: '主檔',
+      administration: '系統管理',
+    },
+    links: {
+      invoices: '發票',
+      invoicesDesc: '建立與管理客戶發票',
+      salesOrders: '銷售單',
+      salesOrdersDesc: '確認訂單並追蹤出貨',
+      quotations: '報價單',
+      quotationsDesc: '準備報價並轉換為訂單',
+      purchases: '採購單',
+      purchasesDesc: '向供應商下單',
+      warehouseStock: '倉庫庫存',
+      warehouseStockDesc: '收貨、送貨、調整與盤點',
+      deliveryNote: '送貨單',
+      deliveryNoteDesc: '為已確認銷售單出貨',
+      grn: '收貨單',
+      grnDesc: '將供應商送貨入庫',
+      salesReport: '銷售報表',
+      salesReportDesc: '按發票或產品查看銷售與毛利',
+      warehouseReport: '倉庫報表',
+      warehouseReportDesc: '追蹤進出庫存異動',
+      customers: '客戶',
+      customersDesc: '客戶主檔',
+      suppliers: '供應商',
+      suppliersDesc: '供應商主檔',
+      products: '產品',
+      productsDesc: '品項與分類',
+      users: '用戶',
+      usersDesc: '帳號與權限管理',
+    },
+    failedLoad: '無法載入儀表板指標',
   },
   productsHub: {
     title: '產品管理',

@@ -13,6 +13,7 @@ import { Form, Input, type InputRef, DatePicker, Select, Button, Table, message,
 import dayjs from 'dayjs';
 import { TransactionSession } from '@/services/transactionGenerator';
 import { getCurrentSuffix } from '@/utils/transactionUtils';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
@@ -57,6 +58,7 @@ interface TransactionHeaderResponse {
   remark?: string;
   create_date?: string;
   prefix?: string;
+  prefix_ref?: string;
   is_void?: number;
 }
 
@@ -68,8 +70,6 @@ interface TransactionDetailResponse {
   unit?: string;
   price?: number;
 }
-
-const ADJ_PREFIX = 'ADJ';
 
 function AdjustmentPageContent() {
   const router = useRouter();
@@ -141,7 +141,7 @@ function AdjustmentPageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prefix: ADJ_PREFIX,
+          prefix_ref: PREFIX_REF.ADJ,
           suffix: getCurrentSuffix(),
           sessionId: browserSessionId,
         }),
@@ -152,7 +152,8 @@ function AdjustmentPageContent() {
       }
       const session: TransactionSession = {
         sessionId: browserSessionId,
-        prefix: ADJ_PREFIX,
+        prefix: String(result.prefix || '').toUpperCase(),
+        prefix_ref: String(result.prefix_ref || PREFIX_REF.ADJ).toUpperCase(),
         suffix: getCurrentSuffix(),
         lastNumber: result.lastNumber,
         transactionCode: result.transactionCode,
@@ -323,7 +324,11 @@ function AdjustmentPageContent() {
       }
       const header = (result.header || {}) as TransactionHeaderResponse;
       const details = (result.details || []) as TransactionDetailResponse[];
-      if (header.prefix && String(header.prefix).toUpperCase() !== ADJ_PREFIX) {
+      if (
+        header.prefix_ref
+          ? String(header.prefix_ref).toUpperCase() !== PREFIX_REF.ADJ
+          : header.prefix && String(header.prefix).toUpperCase() !== 'ADJ'
+      ) {
         throw new Error(a.notAdj(editTransCode));
       }
       form.setFieldsValue({
@@ -432,7 +437,7 @@ function AdjustmentPageContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transCode: editTransCode,
-          headerData: { prefix: ADJ_PREFIX, is_void: 1 },
+          headerData: { prefix_ref: PREFIX_REF.ADJ, is_void: 1 },
         }),
       });
       const result = await response.json();
@@ -466,7 +471,7 @@ function AdjustmentPageContent() {
       const payload = {
         transCode,
         headerData: {
-          prefix: ADJ_PREFIX,
+          prefix_ref: PREFIX_REF.ADJ,
           shop_code,
           wh_code: values.wh_code,
           refer_code: values.reference_no || null,
@@ -677,12 +682,12 @@ function AdjustmentPageContent() {
                 <Col xs={24}>
                   <Card title={a.basicInfo} size="small" className="mb-6">
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">
                           {a.adjNumber} <span className="text-gray-500 text-sm">{a.adjSuffix}</span>
                         </label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="adj_no" rules={[{ required: true, message: a.adjRequired }]} style={{ marginBottom: 0 }}>
                           <Input
                             disabled
@@ -693,30 +698,30 @@ function AdjustmentPageContent() {
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{a.reference}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="reference_no" style={{ marginBottom: 0 }}>
                           <Input placeholder={a.optionalRef} />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{a.date}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="transaction_date" style={{ marginBottom: 0 }}>
                           <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{a.shop}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="wh_code" rules={[{ required: true, message: a.shopRequired }]} style={{ marginBottom: 0 }}>
                           <Select
                             placeholder={a.selectShop}
@@ -728,10 +733,10 @@ function AdjustmentPageContent() {
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{a.remark}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="remark" style={{ marginBottom: 0 }}>
                           <Input placeholder={a.optionalRemark} />
                         </Form.Item>

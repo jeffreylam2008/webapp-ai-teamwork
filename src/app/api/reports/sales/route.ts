@@ -5,6 +5,12 @@ import {
   getAuthenticatedPermissionKeys,
   forbiddenResponse,
 } from '@/lib/transactionPermissionAuth';
+import {
+  PREFIX_REF,
+  bindEqualsStoredPrefixRef,
+  sqlEqualsStoredPrefixRef,
+  sqlPrefixInList,
+} from '@/lib/prefixRef';
 
 const LINE_SALES_EXPR =
   'd.qty * d.price * (1 - COALESCE(d.discount, 0) / 100)';
@@ -20,7 +26,7 @@ const LATEST_GRN_COST_SUBQUERY = `
       ) AS rn
     FROM t_transaction_d d2
     INNER JOIN t_transaction_h h2 ON h2.trans_code = d2.trans_code
-    WHERE UPPER(TRIM(COALESCE(h2.prefix, ''))) = 'GRN'
+    WHERE UPPER(TRIM(COALESCE(h2.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.GRN])}
       AND COALESCE(h2.is_void, 0) = 0
   ) ranked
   WHERE rn = 1
@@ -39,9 +45,8 @@ function buildWhereClause(
   endDate: string,
   shopCode: string
 ): { clause: string; params: string[] } {
-  const params: string[] = [];
-  let clause = `UPPER(TRIM(COALESCE(h.prefix, ''))) = 'INV'
-    AND COALESCE(h.is_void, 0) = 0`;
+  const params: string[] = [...bindEqualsStoredPrefixRef(PREFIX_REF.INV)];
+  let clause = `${sqlEqualsStoredPrefixRef('h')} AND COALESCE(h.is_void, 0) = 0`;
 
   if (startDate) {
     clause += ' AND DATE(h.create_date) >= ?';

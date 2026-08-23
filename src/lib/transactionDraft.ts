@@ -1,4 +1,5 @@
 import { getCurrentSuffix } from '@/utils/transactionUtils';
+import { normalizeToPrefixRef } from '@/lib/prefixRef';
 
 /** Placeholder route segment — document number is reserved on save, not at page load. */
 export const TRANSACTION_DRAFT_TRANS_CODE = 'new';
@@ -19,12 +20,17 @@ export function ensureBrowserSessionId(sessionKey: string): string {
   return sessionId;
 }
 
-export async function reserveTransactionNumber(prefix: string, sessionId: string): Promise<string> {
+/** @param prefixOrRef Stable prefix_ref (_GRN) preferred, or display code (GRN). */
+export async function reserveTransactionNumber(prefixOrRef: string, sessionId: string): Promise<string> {
   const suffix = getCurrentSuffix();
   const response = await fetch('/api/transaction-generator/next', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prefix, suffix, sessionId }),
+    body: JSON.stringify({
+      prefix_ref: normalizeToPrefixRef(prefixOrRef),
+      suffix,
+      sessionId,
+    }),
   });
   const result = (await response.json()) as {
     success: boolean;

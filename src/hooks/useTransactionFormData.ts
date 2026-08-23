@@ -17,6 +17,7 @@ export interface TransactionFormData {
     chi_name: string;
     unit: string;
     price: number;
+    purchase_price?: number | null;
   }>;
   shops: Array<{
     shop_code: string;

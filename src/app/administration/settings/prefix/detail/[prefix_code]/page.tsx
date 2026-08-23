@@ -15,8 +15,11 @@ import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 interface Prefix {
   uid: number;
   prefix_code: string;
+  prefix_ref?: string;
   prefix_name: string;
-  status: number;
+  status: number | string;
+  create_date?: string;
+  modify_date?: string;
   [key: string]: string | number | boolean | undefined;
 }
 
@@ -53,9 +56,16 @@ const PrefixDetailPage = () => {
       const result = await response.json();
 
       if (result.success && result.data.length > 0) {
-        const prefixData = result.data[0];
+        const prefixData = result.data.find(
+          (row: Prefix) =>
+            String(row.prefix_code).toUpperCase() === String(params.prefix_code).toUpperCase() ||
+            String(row.prefix_ref || '').toUpperCase() === String(params.prefix_code).toUpperCase()
+        ) || result.data[0];
         setPrefix(prefixData);
-        form.setFieldsValue(prefixData);
+        form.setFieldsValue({
+          ...prefixData,
+          status: Number(prefixData.status) === 1 || prefixData.status === 'Active' ? 'Active' : 'Inactive',
+        });
       } else {
         messageApi.error(t.detailPage.notFound);
         router.push('/administration/settings/prefix');
@@ -75,12 +85,18 @@ const PrefixDetailPage = () => {
   const handleSave = async (values: Partial<Prefix>) => {
     setSaving(true);
     try {
+      const nextCode = String(values.prefix_code || '')
+        .trim()
+        .toUpperCase();
       const response = await fetchWithAuth('/api/prefixes', token, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prefix_code: params.prefix_code,
-          ...values
+          prefix_ref: prefix?.prefix_ref,
+          original_prefix_code: prefix?.prefix_code || params.prefix_code,
+          prefix_code: nextCode,
+          prefix_name: values.prefix_name,
+          status: values.status,
         }),
       });
       const result = await response.json();
@@ -179,6 +195,16 @@ const PrefixDetailPage = () => {
           <Form.Item
             label={t.form.prefixCode}
             name="prefix_code"
+            rules={[{ required: true, message: t.form.prefixCodeRequired }]}
+            extra={t.form.prefixCodeHelp}
+          >
+            <Input placeholder={t.form.prefixCodePlaceholder} maxLength={10} />
+          </Form.Item>
+
+          <Form.Item
+            label={t.form.prefixRef}
+            name="prefix_ref"
+            extra={t.form.prefixRefHelp}
           >
             <Input disabled />
           </Form.Item>
@@ -202,6 +228,17 @@ const PrefixDetailPage = () => {
               placeholder={t.form.statusPlaceholder}
               options={STATUS_OPTIONS}
               style={{ width: '100%' }}
+            />
+          </Form.Item>
+
+          <Form.Item label={t.detailPage.lastModified}>
+            <Input
+              disabled
+              value={
+                prefix?.modify_date
+                  ? new Date(String(prefix.modify_date)).toLocaleString()
+                  : '—'
+              }
             />
           </Form.Item>
 

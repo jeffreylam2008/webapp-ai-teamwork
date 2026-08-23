@@ -6,6 +6,7 @@ import {
   forbiddenResponse,
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
+import { PREFIX_REF, matchesPrefixRef } from '@/lib/prefixRef';
 
 /**
  * DELETE /api/transactions/delete-stocktake
@@ -19,7 +20,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
-    if (!assertDbPrefixPermission(authResult.keys, 'ST', 'delete')) {
+    if (!assertDbPrefixPermission(authResult.keys, PREFIX_REF.ST, 'delete')) {
       return forbiddenResponse('You do not have permission to delete stocktake');
     }
 
@@ -39,9 +40,10 @@ export async function DELETE(request: NextRequest) {
       // Load header to verify it's a Stocktake (ST) and get shop_code
       const headerResult = await dbService.query<{
         prefix?: string;
+        prefix_ref?: string | null;
         shop_code?: string;
       }>(
-        'SELECT prefix, shop_code FROM t_transaction_h WHERE trans_code = ?',
+        'SELECT prefix, prefix_ref, shop_code FROM t_transaction_h WHERE trans_code = ?',
         [transCode]
       );
 
@@ -49,7 +51,7 @@ export async function DELETE(request: NextRequest) {
       if (!header) {
         throw new Error(`Transaction ${transCode} not found`);
       }
-      if (String(header.prefix).toUpperCase() !== 'ST') {
+      if (!matchesPrefixRef(header.prefix, header.prefix_ref, PREFIX_REF.ST)) {
         throw new Error(`Transaction ${transCode} is not a Stocktake (ST)`);
       }
 
@@ -102,7 +104,7 @@ export async function DELETE(request: NextRequest) {
         request,
         action: 'DELETE',
         transCode,
-        prefix: 'ST',
+        prefix: PREFIX_REF.ST,
       });
 
       return NextResponse.json({

@@ -8,7 +8,8 @@ export const zhHant = {
   },
   page: {
     title: '字首',
-    description: '管理字首',
+    description:
+      '管理單據字首。修改字首代碼會影響新單據編號與畫面上顯示的交易類型。字首參考碼為穩定識別碼，建立後不可更改。',
   },
   buttonBar: {
     add: '新增',
@@ -26,32 +27,24 @@ export const zhHant = {
   filters: {
     title: '篩選選項',
     searchLabel: '搜尋：',
-    searchPlaceholder: '以字首代碼或名稱搜尋...',
+    searchPlaceholder: '以字首代碼、參考碼或名稱搜尋...',
     statusLabel: '狀態：',
     statusAll: '全部',
     search: '搜尋',
   },
   actions: {
-    edit: '編輯',
-    delete: '刪除',
+    edit: '修改字首',
   },
   columns: {
     prefixCode: '字首代碼',
+    prefixRef: '字首參考碼',
     prefixName: '字首名稱',
     status: '狀態',
+    modifyDate: '最後修改',
   },
   status: {
     active: '啟用',
     inactive: '停用',
-  },
-  deleteModal: {
-    title: '刪除字首',
-    ok: '是',
-    cancel: '取消',
-    confirm: (code: string) => `確定要刪除字首「${code}」嗎？`,
-    deleted: '字首已成功刪除',
-    failed: '無法刪除字首',
-    error: '刪除字首時發生錯誤',
   },
   createModal: {
     title: '新增字首',
@@ -65,7 +58,10 @@ export const zhHant = {
   form: {
     prefixCode: '字首代碼',
     prefixCodeRequired: '字首代碼為必填',
-    prefixCodePlaceholder: '輸入字首代碼',
+    prefixCodePlaceholder: '輸入字首代碼（例如 SO）',
+    prefixCodeHelp: '可修改的單據代碼，用於交易編號（例如 SO2608-001）。',
+    prefixRef: '字首參考碼',
+    prefixRefHelp: '系統搜尋與權限使用的穩定識別碼，建立後不可更改。',
     prefixName: '字首名稱',
     prefixNameRequired: '字首名稱為必填',
     prefixNamePlaceholder: '輸入字首名稱',
@@ -86,13 +82,13 @@ export const zhHant = {
     titleLoading: '載入中...',
     descriptionLoading: '請稍候...',
     loadingData: '載入字首資料中...',
-    title: (name: string) => `🔤 ${name}`,
+    title: (name: string) => `修改字首 — ${name}`,
     description: (code: string) => `字首代碼：${code}`,
     defaultTitle: '字首詳情',
+    lastModified: '最後修改',
   },
   statusOptions: {
     active: '啟用',
     inactive: '停用',
   },
 } as const;
-

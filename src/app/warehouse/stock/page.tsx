@@ -17,12 +17,14 @@ import {
   canCreateWarehouseAction,
   canViewWarehouseTransactionType,
 } from '@/config/transactionPermissions';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
 
 interface StockTransaction {
   uid: number;
   transaction_id: string;
   transaction_date: string;
   transaction_type: string;
+  prefix_ref?: string;
   item_code: string;
   item_name: string;
   quantity: number;
@@ -35,12 +37,16 @@ interface StockTransaction {
   modify_date?: string;
 }
 
+function stockTypeRef(record: StockTransaction): string {
+  return effectivePrefixRef(record.prefix_ref, record.transaction_type);
+}
+
 function transactionKindLabel(
-  type: string,
+  typeRef: string,
   t: ReturnType<typeof getStockTransactionTexts>['list']
 ) {
-  if (type === 'ADJ') return t.kindAdjustment;
-  if (type === 'ST') return t.kindStocktake;
+  if (typeRef === PREFIX_REF.ADJ) return t.kindAdjustment;
+  if (typeRef === PREFIX_REF.ST) return t.kindStocktake;
   return t.kindGrn;
 }
 
@@ -92,7 +98,7 @@ function StockPageContent() {
       try {
         const prefix = overrides?.prefix !== undefined ? overrides.prefix : prefixFilter;
         const prefixParam =
-          prefix != null && prefix !== '' ? prefix : allowedStockPrefixes || 'GRN';
+          prefix != null && prefix !== '' ? prefix : allowedStockPrefixes || PREFIX_REF.GRN;
         const startDate = overrides?.startDate ?? (dateRange[0] ? dateRange[0].format('YYYY-MM-DD') : '');
         const endDate = overrides?.endDate ?? (dateRange[1] ? dateRange[1].format('YYYY-MM-DD') : '');
 
@@ -125,20 +131,17 @@ function StockPageContent() {
 
   const handleVoidGRN = useCallback(
     (record: StockTransaction) => {
-      const prefix =
-        record.transaction_type === 'ADJ'
-          ? 'ADJ'
-          : record.transaction_type === 'ST'
-            ? 'ST'
-            : 'GRN';
-      const kind = transactionKindLabel(record.transaction_type, t.list);
+      const typeRef = stockTypeRef(record);
+      const kind = transactionKindLabel(typeRef, t.list);
       modal.confirm({
         title: t.list.voidTitle(kind),
         content: (
           <>
             <p>{t.list.voidConfirmLine(kind, record.transaction_id)}</p>
-            {prefix === 'GRN' && <p>{t.list.voidGrnHint}</p>}
-            {(prefix === 'ADJ' || prefix === 'ST') && <p>{t.list.voidAdjStkHint}</p>}
+            {typeRef === PREFIX_REF.GRN && <p>{t.list.voidGrnHint}</p>}
+            {(typeRef === PREFIX_REF.ADJ || typeRef === PREFIX_REF.ST) && (
+              <p>{t.list.voidAdjStkHint}</p>
+            )}
             <p>
               <strong>{t.list.voidCannotUndo}</strong>
             </p>
@@ -151,7 +154,7 @@ function StockPageContent() {
           setVoidingTransCode(record.transaction_id);
           try {
             const response =
-              prefix === 'ST'
+              typeRef === PREFIX_REF.ST
                 ? await fetchWithAuth('/api/transactions/delete-stocktake', token, {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/json' },
@@ -162,15 +165,15 @@ function StockPageContent() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                       transCode: record.transaction_id,
-                      headerData: { prefix, is_void: 1 },
+                      headerData: { prefix_ref: typeRef, is_void: 1 },
                     }),
                   });
             const result = await response.json();
             if (!result.success) throw new Error(result.error || t.list.voidTitle(kind));
             messageApi.success(
-              prefix === 'ADJ'
+              typeRef === PREFIX_REF.ADJ
                 ? t.list.voidSuccessAdj
-                : prefix === 'ST'
+                : typeRef === PREFIX_REF.ST
                   ? t.list.voidSuccessStk
                   : t.list.voidSuccessGrn
             );
@@ -233,7 +236,7 @@ function StockPageContent() {
         fixed: 'left' as const,
         render: (_: unknown, record: StockTransaction) => (
           <div className="flex flex-row items-center justify-start gap-2">
-            {canViewWarehouseTransactionType(can, record.transaction_type) && (
+            {canViewWarehouseTransactionType(can, stockTypeRef(record)) && (
               <Tooltip title={t.list.tooltipViewDetail}>
                 <span className="inline-flex">
                   <button
@@ -253,7 +256,7 @@ function StockPageContent() {
               </Tooltip>
             )}
             {can('edit_stocktake') &&
-              record.transaction_type === 'ST' &&
+              stockTypeRef(record) === PREFIX_REF.ST &&
               record.status !== 'Void' && (
               <Tooltip title={t.list.tooltipEditStocktake}>
                 <span className="inline-flex">
@@ -274,7 +277,7 @@ function StockPageContent() {
               </Tooltip>
             )}
             {can('edit_adjustment') &&
-              record.transaction_type === 'ADJ' &&
+              stockTypeRef(record) === PREFIX_REF.ADJ &&
               record.status !== 'Void' && (
               <Tooltip title={t.list.tooltipEditAdjustment}>
                 <span className="inline-flex">
@@ -294,9 +297,9 @@ function StockPageContent() {
                 </span>
               </Tooltip>
             )}
-            {((record.transaction_type === 'GRN' && can('void_grn')) ||
-              (record.transaction_type === 'ADJ' && can('void_adjustment')) ||
-              (record.transaction_type === 'ST' && can('void_stocktake'))) &&
+            {((stockTypeRef(record) === PREFIX_REF.GRN && can('void_grn')) ||
+              (stockTypeRef(record) === PREFIX_REF.ADJ && can('void_adjustment')) ||
+              (stockTypeRef(record) === PREFIX_REF.ST && can('void_stocktake'))) &&
               record.status !== 'Void' && (
                 <Tooltip title={t.list.tooltipVoid}>
                   <span className="inline-flex">
@@ -533,7 +536,7 @@ function StockPageContent() {
                     setSearchText('');
                     setPrefixFilter('');
                     void fetchTransactions({
-                      prefix: allowedStockPrefixes || 'GRN',
+                      prefix: allowedStockPrefixes || PREFIX_REF.GRN,
                       startDate: undefined,
                       endDate: undefined,
                     });
@@ -553,7 +556,7 @@ function StockPageContent() {
                     onChange={(v) => {
                       const next = v ?? '';
                       setPrefixFilter(next);
-                      const prefix = next !== '' ? next : allowedStockPrefixes || 'GRN';
+                      const prefix = next !== '' ? next : allowedStockPrefixes || PREFIX_REF.GRN;
                       const start = dateRange[0] ? dateRange[0].format('YYYY-MM-DD') : undefined;
                       const end = dateRange[1] ? dateRange[1].format('YYYY-MM-DD') : undefined;
                       void fetchTransactions({ prefix, startDate: start, endDate: end });
@@ -561,13 +564,17 @@ function StockPageContent() {
                     style={{ minWidth: 180 }}
                     options={[
                       { value: '', label: t.list.typeAll },
-                      ...(can('view_grn') ? [{ value: 'GRN', label: t.list.typeGrn }] : []),
-                      ...(can('view_delivery_note')
-                        ? [{ value: 'DN', label: t.list.typeDn }]
+                      ...(can('view_grn')
+                        ? [{ value: PREFIX_REF.GRN, label: t.list.typeGrn }]
                         : []),
-                      ...(can('view_stocktake') ? [{ value: 'ST', label: t.list.typeSt }] : []),
+                      ...(can('view_delivery_note')
+                        ? [{ value: PREFIX_REF.DN, label: t.list.typeDn }]
+                        : []),
+                      ...(can('view_stocktake')
+                        ? [{ value: PREFIX_REF.ST, label: t.list.typeSt }]
+                        : []),
                       ...(can('view_adjustment')
-                        ? [{ value: 'ADJ', label: t.list.typeAdj }]
+                        ? [{ value: PREFIX_REF.ADJ, label: t.list.typeAdj }]
                         : []),
                     ]}
                   />
@@ -580,7 +587,9 @@ function StockPageContent() {
                       const next = (dates ?? [null, null]) as [Dayjs | null, Dayjs | null];
                       setDateRange(next);
                       const prefix =
-                        prefixFilter !== '' ? prefixFilter : allowedStockPrefixes || 'GRN';
+                        prefixFilter !== ''
+                          ? prefixFilter
+                          : allowedStockPrefixes || PREFIX_REF.GRN;
                       const start = next[0] ? next[0].format('YYYY-MM-DD') : undefined;
                       const end = next[1] ? next[1].format('YYYY-MM-DD') : undefined;
                       void fetchTransactions({ prefix, startDate: start, endDate: end });

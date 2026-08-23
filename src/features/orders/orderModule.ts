@@ -3,6 +3,7 @@ import {
   isTransactionDraftTransCode,
   reserveTransactionNumber,
 } from '@/lib/transactionDraft';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 export const ORDER_SESSION_KEY = 'order_session_id';
 export const ORDER_CLONE_KEY_PREFIX = 'order_clone_';
@@ -11,7 +12,7 @@ export const ORDER_BASE_PATH = '/sales/orders';
 export { TRANSACTION_DRAFT_TRANS_CODE, isTransactionDraftTransCode as isOrderDraftTransCode };
 
 export async function reserveOrderNumber(sessionId: string): Promise<string> {
-  return reserveTransactionNumber('SO', sessionId);
+  return reserveTransactionNumber(PREFIX_REF.SO, sessionId);
 }
 
 export function orderCreatePath(transCode: string): string {

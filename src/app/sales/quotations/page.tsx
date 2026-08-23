@@ -14,6 +14,7 @@ import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getQuotationTexts } from './i18n';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import {
   quotationDraftCreatePath,
   QUOTATION_CLONE_KEY_PREFIX,
@@ -103,7 +104,7 @@ export default function QuotationsPage() {
       console.log('Fetching quotation transactions...');
       
       // Build URL with filters - focus on QTA prefix for quotations
-      let url = `/api/transactions?prefix=QTA&page=${page}&pageSize=${pageSize}`;
+      let url = `/api/transactions?prefix=${encodeURIComponent(PREFIX_REF.QTA)}&page=${page}&pageSize=${pageSize}`;
       
       // Add date range if set
       if (dateRange[0] && dateRange[1]) {

@@ -13,6 +13,7 @@ import { Form, Input, type InputRef, DatePicker, Select, Button, Table, message,
 import dayjs from 'dayjs';
 import { TransactionSession } from '@/services/transactionGenerator';
 import { getCurrentSuffix } from '@/utils/transactionUtils';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
@@ -57,6 +58,7 @@ interface TransactionHeaderResponse {
   remark?: string;
   create_date?: string;
   prefix?: string;
+  prefix_ref?: string;
   is_void?: number;
 }
 
@@ -68,9 +70,6 @@ interface TransactionDetailResponse {
   unit?: string;
   price?: number;
 }
-
-const STK_PREFIX = 'ST';
-const ADJ_PREFIX = 'ADJ';
 
 function StocktakePageContent() {
   const router = useRouter();
@@ -141,7 +140,7 @@ function StocktakePageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prefix: STK_PREFIX,
+          prefix_ref: PREFIX_REF.ST,
           suffix: getCurrentSuffix(),
           sessionId: browserSessionId,
         }),
@@ -152,7 +151,8 @@ function StocktakePageContent() {
       }
       const session: TransactionSession = {
         sessionId: browserSessionId,
-        prefix: STK_PREFIX,
+        prefix: String(result.prefix || '').toUpperCase(),
+        prefix_ref: String(result.prefix_ref || PREFIX_REF.ST).toUpperCase(),
         suffix: getCurrentSuffix(),
         lastNumber: result.lastNumber,
         transactionCode: result.transactionCode,
@@ -319,7 +319,11 @@ function StocktakePageContent() {
       }
       const header = (result.header || {}) as TransactionHeaderResponse;
       const details = (result.details || []) as TransactionDetailResponse[];
-      if (header.prefix && String(header.prefix).toUpperCase() !== STK_PREFIX) {
+      if (
+        header.prefix_ref
+          ? String(header.prefix_ref).toUpperCase() !== PREFIX_REF.ST
+          : header.prefix && String(header.prefix).toUpperCase() !== 'ST'
+      ) {
         throw new Error(s.notStk(editTransCode));
       }
       form.setFieldsValue({
@@ -487,7 +491,7 @@ function StocktakePageContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prefix: ADJ_PREFIX,
+          prefix_ref: PREFIX_REF.ADJ,
           suffix: getCurrentSuffix(),
           sessionId,
         }),
@@ -503,7 +507,7 @@ function StocktakePageContent() {
       const payload = {
         transCode: adjTransCode,
         headerData: {
-          prefix: ADJ_PREFIX,
+          prefix_ref: PREFIX_REF.ADJ,
           shop_code,
           wh_code: values.wh_code || '',
           refer_code: editTransCode,
@@ -566,7 +570,7 @@ function StocktakePageContent() {
       const payload = {
         transCode,
         headerData: {
-          prefix: STK_PREFIX,
+          prefix_ref: PREFIX_REF.ST,
           shop_code,
           wh_code: values.wh_code,
           refer_code: values.reference_no || null,
@@ -790,12 +794,12 @@ function StocktakePageContent() {
                 <Col xs={24}>
                   <Card title={s.basicInfo} size="small" className="mb-6">
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">
                           {s.stkNumber} <span className="text-gray-500 text-sm">{s.stkSuffix}</span>
                         </label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="stk_no" rules={[{ required: true, message: s.stkRequired }]} style={{ marginBottom: 0 }}>
                           <Input
                             disabled
@@ -806,30 +810,30 @@ function StocktakePageContent() {
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{s.reference}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="reference_no" style={{ marginBottom: 0 }}>
                           <Input placeholder={s.optionalRef} />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{s.date}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="transaction_date" style={{ marginBottom: 0 }}>
                           <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
                         </Form.Item>
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle" className="mb-4">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{s.shop}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="wh_code" rules={[{ required: true, message: s.shopRequired }]} style={{ marginBottom: 0 }}>
                           <Select
                             placeholder={s.selectShop}
@@ -841,10 +845,10 @@ function StocktakePageContent() {
                       </Col>
                     </Row>
                     <Row gutter={16} align="middle">
-                      <Col span={6}>
+                      <Col xs={24} md={6}>
                         <label className="font-medium text-gray-700">{s.remark}</label>
                       </Col>
-                      <Col span={18}>
+                      <Col xs={24} md={18}>
                         <Form.Item name="remark" style={{ marginBottom: 0 }}>
                           <Input placeholder={s.optionalRemark} />
                         </Form.Item>

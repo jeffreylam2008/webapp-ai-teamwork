@@ -28,6 +28,7 @@ import { formatCurrency } from '@/utils/formatCurrency';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSalesOrderTexts } from './i18n';
 import { orderDraftCreatePath } from '@/features/orders/orderModule';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 interface OrderTransaction {
   uid: number;
@@ -116,7 +117,7 @@ export default function OrdersPage() {
   const fetchTransactions = useCallback(async (page: number = 1, pageSize: number = 20) => {
     setLoading(true);
     try {
-      let url = `/api/transactions?prefix=SO&page=${page}&pageSize=${pageSize}`;
+      let url = `/api/transactions?prefix=${encodeURIComponent(PREFIX_REF.SO)}&page=${page}&pageSize=${pageSize}`;
       if (dateRange[0] && dateRange[1]) {
         url += `&start_date=${dateRange[0].format('YYYY-MM-DD')}&end_date=${dateRange[1].format('YYYY-MM-DD')}`;
       }

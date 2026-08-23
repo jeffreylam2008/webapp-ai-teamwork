@@ -13,6 +13,7 @@ export type QuickItemProduct = {
   chi_name: string;
   unit?: string;
   price?: number;
+  purchase_price?: number | null;
   cate_code?: string;
 };
 

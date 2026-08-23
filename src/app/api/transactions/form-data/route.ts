@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
+import { ensureItemPurchasePriceColumn } from '@/lib/ensureItemPurchasePriceColumn';
 
 export async function GET(request: NextRequest) {
   try {
     console.log('[API] Fetching form data for transaction edit');
+
+    await ensureItemPurchasePriceColumn();
 
     const productCategory = request.nextUrl.searchParams.get('product_category')?.trim() || '';
 
@@ -17,7 +20,7 @@ export async function GET(request: NextRequest) {
     // Fetch products (optional product_category limits to one t_items_category.cate_code)
     const productParams: string[] = [];
     let productsSql =
-      `SELECT item_code, eng_name, chi_name, unit, price, cate_code FROM t_items`;
+      `SELECT item_code, eng_name, chi_name, unit, price, purchase_price, cate_code FROM t_items`;
     if (productCategory) {
       productsSql += ` WHERE cate_code = ?`;
       productParams.push(productCategory);

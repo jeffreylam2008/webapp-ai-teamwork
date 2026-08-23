@@ -5,6 +5,7 @@ import { logTransactionAction } from '@/lib/audit';
 import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
 import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { formatSqlDateTime } from '@/lib/datetime';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 
 type DeliveryNoteItemInput = {
   item_code?: string;
@@ -110,8 +111,8 @@ export async function POST(request: NextRequest) {
     if (referCode.toUpperCase().startsWith('SO')) {
       const soHdr = await dbService.query<{ is_settle: number | null; is_void: number | null }>(
         `SELECT is_settle, is_void FROM t_transaction_h
-         WHERE trans_code = ? AND UPPER(TRIM(COALESCE(prefix,''))) = 'SO' LIMIT 1`,
-        [referCode]
+         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} LIMIT 1`,
+        [referCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
       );
       const so = soHdr.data?.[0];
       if (so && Number(so.is_void ?? 0) !== 1 && Number(so.is_settle ?? 0) === 1) {
@@ -188,11 +189,13 @@ export async function POST(request: NextRequest) {
 
     await dbService.query(
       `INSERT INTO t_transaction_h (
-        trans_code, prefix, cust_code, refer_code, shop_code, wh_code,
+        trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code, wh_code,
         total, employee_code, remark, is_void, is_convert, is_settle, create_date, modify_date
-      ) VALUES (?, 'DN', ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
       [
         transCode,
+        PREFIX_REF.DN,
+        PREFIX_REF.DN,
         custCode,
         referCode || null,
         shopCode || null,
@@ -240,7 +243,7 @@ export async function POST(request: NextRequest) {
       request,
       action: 'CREATE',
       transCode,
-      prefix: 'DN',
+      prefix: PREFIX_REF.DN,
       details: { referCode: referCode || undefined, skipStockDeduction },
     });
 

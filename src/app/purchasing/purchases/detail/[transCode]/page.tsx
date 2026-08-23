@@ -22,6 +22,8 @@ import {
   TransactionDetailInfoCard,
 } from '@/components/transactionDetailInfo';
 import { formatCurrency } from '@/utils/formatCurrency';
+import { getPurchaseDefaultPrice } from '@/lib/itemPricing';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 const { Text } = Typography;
 
@@ -81,7 +83,7 @@ interface TransactionPaymentTotal {
 
 interface FormData {
   customers: Array<{ cust_code: string; name: string; phone_1: string; email_1: string }>;
-  products: Array<{ item_code: string; eng_name: string; chi_name: string; unit: string; price: number }>;
+  products: Array<{ item_code: string; eng_name: string; chi_name: string; unit: string; price: number; purchase_price?: number | null }>;
   shops: Array<{ shop_code: string; name: string }>;
   employees: Array<{ employee_code: string; name: string }>;
   paymentMethods: Array<{ pm_code: string; payment_method: string }>;
@@ -241,7 +243,7 @@ export default function PurchaseOrderDetailPage() {
     if (!transCode) return;
     try {
       const res = await fetchWithAuth(
-        `/api/transactions?prefix=GRN&refer_code=${encodeURIComponent(transCode)}&pageSize=50`,
+        `/api/transactions?prefix=${encodeURIComponent(PREFIX_REF.GRN)}&refer_code=${encodeURIComponent(transCode)}&pageSize=50`,
         token,
         { cache: 'no-store', signal }
       );
@@ -450,7 +452,7 @@ export default function PurchaseOrderDetailPage() {
     setEditingDetails(newDetails);
   };
 
-  const addOrIncrementItem = (product: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number }) => {
+  const addOrIncrementItem = (product: { item_code: string; eng_name: string; chi_name: string; unit: string; price: number; purchase_price?: number | null }) => {
     const existingIdx = editingDetails.findIndex((d) => String(d.item_code) === String(product.item_code));
     if (existingIdx >= 0) {
       setEditingDetails((prev) => {
@@ -471,7 +473,7 @@ export default function PurchaseOrderDetailPage() {
       qty: 1,
       pstock: 0,
       unit: product.unit,
-      price: Number(product.price || 0),
+      price: getPurchaseDefaultPrice(product),
       discount: 0,
       create_date: new Date().toISOString(),
       modify_date: new Date().toISOString()

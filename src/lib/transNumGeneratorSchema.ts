@@ -5,6 +5,7 @@ export type TransNumGeneratorSchema = {
   seqCol: string | null;
   hasStatus: boolean;
   hasSessionId: boolean;
+  hasPrefixRef: boolean;
   /** True when a UNIQUE index covers both prefix and suffix (required for safe upsert). */
   hasUniquePrefixSuffix: boolean;
 };
@@ -65,6 +66,7 @@ export async function getTransNumGeneratorSchema(): Promise<TransNumGeneratorSch
     seqCol,
     hasStatus: lower.has('status'),
     hasSessionId: lower.has('session_id'),
+    hasPrefixRef: lower.has('prefix_ref'),
     hasUniquePrefixSuffix,
   };
   cacheAt = now;

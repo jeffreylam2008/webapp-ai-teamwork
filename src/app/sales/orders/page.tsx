@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import {
   createInvoiceFromSalesOrder,
+  getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
 import { Modal, Table, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
 import { Dayjs } from 'dayjs';
@@ -277,12 +278,18 @@ export default function OrdersPage() {
         return;
       }
       if (!can('create_invoice')) return;
+      const sessionId = getOrCreateInvoiceBrowserSessionId();
+      if (!sessionId) {
+        messageApi.error(t.prompts.invoiceSessionNotReady ?? 'Invoice session is not ready. Please try again.');
+        return;
+      }
       setCreatingInvoiceId(record.uid);
       messageApi.loading({ content: t.prompts.createInvoiceStarted, key: 'createInvoiceFromSo', duration: 0 });
       try {
         const newCode = await createInvoiceFromSalesOrder({
           salesOrderCode: transCode,
           token,
+          browserSessionId: sessionId,
         });
         messageApi.destroy('createInvoiceFromSo');
         router.push(`/sales/invoices/create/${encodeURIComponent(newCode)}`);

@@ -1,5 +1,5 @@
 import { getCurrentSuffix } from '@/utils/transactionUtils';
-import { PREFIX_REF } from '@/lib/prefixRef';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 
 const INVOICE_SESSION_KEY = 'invoice_session_id';
@@ -57,8 +57,11 @@ export async function createInvoiceFromSalesOrder(params: {
   }
 
   const sourceHeader = sourceJson.header || {};
-  const prefix = String(sourceHeader.prefix || '').trim().toUpperCase();
-  if (prefix !== 'SO') throw new Error('Not a sales order');
+  const typeRef = effectivePrefixRef(
+    sourceHeader.prefix_ref as string | null | undefined,
+    sourceHeader.prefix as string | null | undefined
+  );
+  if (typeRef !== PREFIX_REF.SO) throw new Error('Not a sales order');
   if (Number(sourceHeader.is_void ?? 0) === 1) throw new Error('Cannot create invoice from a void sales order');
   if (Number(sourceHeader.is_settle ?? 0) !== 1) {
     throw new Error('Sales order must be settled before creating an invoice');

@@ -63,7 +63,14 @@ export default function SystemLogo({
         <img
           src={trimmed}
           alt=""
-          style={{ width: imageSize, height: imageSize, objectFit: 'contain' }}
+          style={{
+            height: imageSize,
+            width: 'auto',
+            maxWidth: '100%',
+            maxHeight: imageSize,
+            objectFit: 'contain',
+            display: 'block',
+          }}
         />
       </span>
     );

@@ -595,12 +595,19 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                 height: '64px', 
                 display: 'flex', 
                 alignItems: 'center', 
-                justifyContent: 'center',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                padding: collapsed ? '6px' : '6px 12px',
                 borderBottom: '1px solid #f0f0f0',
                 fontSize: '20px',
-                color: '#1890ff'
+                color: '#1890ff',
+                overflow: 'hidden',
               }}>
-                <SystemLogo logo={systemLogo} iconStyle={{ fontSize: 24 }} imageSize={32} />
+                <SystemLogo
+                  logo={systemLogo}
+                  iconStyle={{ fontSize: 48 }}
+                  imageSize={52}
+                  style={{ width: '100%', height: '100%', justifyContent: collapsed ? 'center' : 'flex-start' }}
+                />
               </div>
               {mounted &&
                 (collapsed ? (

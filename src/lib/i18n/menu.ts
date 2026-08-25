@@ -9,7 +9,7 @@ const ZH_HANT: Record<MenuKey, string> = {
   products: '產品',
   items: '貨品',
   categories: '分類',
-  'item-types': '貨品類型',
+  'item-types': '類型',
 
   warehouse: '倉庫',
   stock: '庫存',

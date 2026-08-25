@@ -11,6 +11,7 @@ export type BreadcrumbLabels = {
   styleProfiles: string;
   products: string;
   categories: string;
+  itemTypes: string;
   sales: string;
   purchasing: string;
   warehouse: string;
@@ -45,6 +46,7 @@ const EN: BreadcrumbLabels = {
   styleProfiles: 'Style Profiles',
   products: 'Products',
   categories: 'Categories',
+  itemTypes: 'Item Types',
   sales: 'Sales',
   purchasing: 'Purchasing',
   warehouse: 'Warehouse',
@@ -78,6 +80,7 @@ const ZH_HANT: BreadcrumbLabels = {
   styleProfiles: '樣式設定檔',
   products: '產品',
   categories: '分類',
+  itemTypes: '貨品類型',
   sales: '銷售',
   purchasing: '採購',
   warehouse: '倉庫',

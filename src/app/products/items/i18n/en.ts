@@ -111,6 +111,7 @@ export const en = {
     service: 'Service',
     component: 'Component',
     material: 'Material',
+    monthly: 'Monthly',
     unknown: (n: number) => `Type ${n}`,
   },
   detail: {

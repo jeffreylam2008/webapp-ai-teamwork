@@ -390,6 +390,7 @@ export default function ItemDetailPage() {
         2: t.type.service,
         3: t.type.component,
         4: t.type.material,
+        5: t.type.monthly,
       };
       return typeMap[type] ?? t.type.unknown(type);
     },
@@ -815,6 +816,7 @@ export default function ItemDetailPage() {
                         { value: 2, label: t.type.service },
                         { value: 3, label: t.type.component },
                         { value: 4, label: t.type.material },
+                        { value: 5, label: t.type.monthly },
                       ]}
                     />
                   </Descriptions.Item>

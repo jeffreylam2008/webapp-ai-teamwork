@@ -27,7 +27,8 @@
     "order": 4,
     "submenu": [
       { "key": "items", "label": "Items", "href": "/products/items" },
-      { "key": "categories", "label": "Categories", "href": "/products/categories" }
+      { "key": "categories", "label": "Categories", "href": "/products/categories" },
+      { "key": "item-types", "label": "Item Types", "href": "/products/item-types" }
     ]
   },
   {

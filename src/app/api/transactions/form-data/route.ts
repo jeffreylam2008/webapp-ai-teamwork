@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { ensureItemPurchasePriceColumn } from '@/lib/ensureItemPurchasePriceColumn';
+import { ensureMonthlyItemTypeCode } from '@/lib/ensureMonthlyItemType';
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,6 +10,8 @@ export async function GET(request: NextRequest) {
     await ensureItemPurchasePriceColumn();
 
     const productCategory = request.nextUrl.searchParams.get('product_category')?.trim() || '';
+    const itemTypeParam = request.nextUrl.searchParams.get('item_type')?.trim().toLowerCase() || '';
+    const productTypeRaw = request.nextUrl.searchParams.get('product_type')?.trim() || '';
 
     // Fetch customers
     const customersResult = await dbService.query(
@@ -17,13 +20,32 @@ export async function GET(request: NextRequest) {
        ORDER BY name ASC`
     );
 
-    // Fetch products (optional product_category limits to one t_items_category.cate_code)
-    const productParams: string[] = [];
+    // Fetch products:
+    // - item_type=monthly → ensure Monthly in t_items_type, filter t_items.type
+    // - product_type=N → filter t_items.type = N
+    // - product_category → legacy filter on t_items.cate_code
+    const productParams: Array<string | number> = [];
     let productsSql =
-      `SELECT item_code, eng_name, chi_name, unit, price, purchase_price, cate_code FROM t_items`;
-    if (productCategory) {
-      productsSql += ` WHERE cate_code = ?`;
+      `SELECT item_code, eng_name, chi_name, unit, price, purchase_price, cate_code, type FROM t_items`;
+    const whereParts: string[] = [];
+
+    if (itemTypeParam === 'monthly') {
+      const monthlyTypeCode = await ensureMonthlyItemTypeCode();
+      whereParts.push('type = ?');
+      productParams.push(monthlyTypeCode);
+    } else if (productTypeRaw) {
+      const productType = Number(productTypeRaw);
+      if (Number.isFinite(productType) && productType > 0) {
+        whereParts.push('type = ?');
+        productParams.push(Math.trunc(productType));
+      }
+    } else if (productCategory) {
+      whereParts.push('cate_code = ?');
       productParams.push(productCategory);
+    }
+
+    if (whereParts.length > 0) {
+      productsSql += ` WHERE ${whereParts.join(' AND ')}`;
     }
     productsSql += ` ORDER BY eng_name ASC`;
 

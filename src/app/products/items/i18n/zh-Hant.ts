@@ -111,6 +111,7 @@ export const zhHant = {
     service: '服務',
     component: '組件',
     material: '物料',
+    monthly: '月費',
     unknown: (n: number) => `類型 ${n}`,
   },
   detail: {

@@ -1,6 +1,6 @@
 'use client';
 import { Typography, Card, Row, Col } from 'antd';
-import { AppstoreOutlined, TagsOutlined } from '@ant-design/icons';
+import { AppstoreOutlined, TagsOutlined, ClusterOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -20,11 +20,11 @@ export default function ProductsPage() {
   return (
     <BasicPageLayout
       breadcrumb={
-        <Breadcrumb 
+        <Breadcrumb
           items={[
             { label: bc.home, href: '/' },
-            { label: bc.products, current: true }
-          ]} 
+            { label: bc.products, current: true },
+          ]}
         />
       }
       title={t.title}
@@ -32,34 +32,44 @@ export default function ProductsPage() {
     >
       <div className="px-8 py-6 bg-white">
         <Row gutter={[24, 24]}>
-          <Col xs={24} md={12}>
-            <Card 
-              hoverable 
+          <Col xs={24} md={8}>
+            <Card
+              hoverable
               onClick={() => router.push('/products/items')}
               className="cursor-pointer transition-all duration-200 hover:shadow-lg"
             >
               <div className="text-center">
                 <AppstoreOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
                 <Title level={3}>{t.cardItemsTitle}</Title>
-                <Paragraph>
-                  {t.cardItemsDesc}
-                </Paragraph>
+                <Paragraph>{t.cardItemsDesc}</Paragraph>
               </div>
             </Card>
           </Col>
-          
-          <Col xs={24} md={12}>
-            <Card 
-              hoverable 
+
+          <Col xs={24} md={8}>
+            <Card
+              hoverable
               onClick={() => router.push('/products/categories')}
               className="cursor-pointer transition-all duration-200 hover:shadow-lg"
             >
               <div className="text-center">
                 <TagsOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />
                 <Title level={3}>{t.cardCategoriesTitle}</Title>
-                <Paragraph>
-                  {t.cardCategoriesDesc}
-                </Paragraph>
+                <Paragraph>{t.cardCategoriesDesc}</Paragraph>
+              </div>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={8}>
+            <Card
+              hoverable
+              onClick={() => router.push('/products/item-types')}
+              className="cursor-pointer transition-all duration-200 hover:shadow-lg"
+            >
+              <div className="text-center">
+                <ClusterOutlined style={{ fontSize: '48px', color: '#722ed1', marginBottom: '16px' }} />
+                <Title level={3}>{t.cardItemTypesTitle}</Title>
+                <Paragraph>{t.cardItemTypesDesc}</Paragraph>
               </div>
             </Card>
           </Col>
@@ -67,4 +77,4 @@ export default function ProductsPage() {
       </div>
     </BasicPageLayout>
   );
-}   
+}

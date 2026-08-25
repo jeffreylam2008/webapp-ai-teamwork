@@ -655,6 +655,7 @@ export default function ProductsItemsPage() {
               <Select>
                 <Select.Option value={1}>{t.type.product}</Select.Option>
                 <Select.Option value={2}>{t.type.service}</Select.Option>
+                <Select.Option value={5}>{t.type.monthly}</Select.Option>
               </Select>
             </Form.Item>
             <Form.Item

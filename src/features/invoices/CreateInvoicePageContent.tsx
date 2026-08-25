@@ -28,7 +28,6 @@ import {
   isMonthlyInvoiceSubtype,
   normalizeInvoiceSubtype,
 } from '@/config/invoiceSubtypes';
-import { MONTHLY_ITEM_CATEGORY_CODE } from '@/config/itemCategories';
 import {
   getInvoiceModuleConfig,
   isInvoiceDraftTransCode,
@@ -38,7 +37,15 @@ import {
 
 interface FormData {
   customers: Array<{ cust_code: string; name: string; phone_1: string; email_1: string; pm_code?: string | null }>;
-  products: Array<{ item_code: string; eng_name: string; chi_name: string; unit: string; price: number; cate_code?: string }>;
+  products: Array<{
+    item_code: string;
+    eng_name: string;
+    chi_name: string;
+    unit: string;
+    price: number;
+    cate_code?: string;
+    type?: number | null;
+  }>;
   shops: Array<{ shop_code: string; name: string; is_warehouse?: number | string | boolean }>;
   employees: Array<{ employee_code: string; name: string }>;
   paymentMethods: Array<{ pm_code: string; payment_method: string }>;
@@ -256,7 +263,7 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   const fetchFormData = async () => {
     try {
       const formDataUrl = isMonthly
-        ? `/api/transactions/form-data?product_category=${encodeURIComponent(MONTHLY_ITEM_CATEGORY_CODE)}`
+        ? '/api/transactions/form-data?item_type=monthly'
         : '/api/transactions/form-data';
       const response = await fetchWithAuth(formDataUrl, token, { cache: 'no-store' });
       const result = await response.json();
@@ -329,11 +336,9 @@ export default function CreateInvoicePageContent({ mode }: { mode: InvoiceModule
   };
 
   const invoiceProducts = useMemo(() => {
-    if (!formData?.products) return [];
-    return formData.products.filter(
-      (item) => !isMonthly || !item.cate_code || item.cate_code === MONTHLY_ITEM_CATEGORY_CODE
-    );
-  }, [formData?.products, isMonthly]);
+    // Monthly form-data already filters to t_items.type = Monthly (t_items_type).
+    return formData?.products || [];
+  }, [formData?.products]);
 
   const filteredCustomers = useMemo(() => {
     if (!formData?.customers) return [];

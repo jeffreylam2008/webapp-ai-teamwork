@@ -9,12 +9,13 @@ CREATE TABLE IF NOT EXISTS t_items_type (
   PRIMARY KEY (type_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 1 Inventory, 2 (Non-Inventory), 3 Bookle, 4 Token
+-- 1 Inventory, 2 (Non-Inventory), 3 Bookle, 4 Token, 5 Monthly
 INSERT INTO t_items_type (type_code, name)
 VALUES
   (1, 'Inventory'),
   (2, '(Non-Inventory)'),
   (3, 'Bookle'),
-  (4, 'Token')
+  (4, 'Token'),
+  (5, 'Monthly')
 ON DUPLICATE KEY UPDATE
   name = VALUES(name);

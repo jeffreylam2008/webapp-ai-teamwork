@@ -15,6 +15,7 @@ export type QuickItemProduct = {
   price?: number;
   purchase_price?: number | null;
   cate_code?: string;
+  type?: number | null;
 };
 
 export function findProductByItemCode(

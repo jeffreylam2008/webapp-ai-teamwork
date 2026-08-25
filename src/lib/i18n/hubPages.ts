@@ -62,6 +62,8 @@ export type HubPagesTexts = {
     cardItemsDesc: string;
     cardCategoriesTitle: string;
     cardCategoriesDesc: string;
+    cardItemTypesTitle: string;
+    cardItemTypesDesc: string;
   };
   administrationHub: {
     title: string;
@@ -150,11 +152,13 @@ const EN: HubPagesTexts = {
   },
   productsHub: {
     title: 'Products Management',
-    description: 'Manage your product catalog, items, and categories',
+    description: 'Manage your product catalog, items, categories, and item types',
     cardItemsTitle: 'Product Items',
     cardItemsDesc: 'Manage your product items, including details, pricing, and inventory.',
     cardCategoriesTitle: 'Product Categories',
     cardCategoriesDesc: 'Organize your products with categories and classifications.',
+    cardItemTypesTitle: 'Item Types',
+    cardItemTypesDesc: 'Manage item types such as Inventory, Non-Inventory, and Monthly.',
   },
   administrationHub: {
     title: 'Administration',
@@ -243,11 +247,13 @@ const ZH_HANT: HubPagesTexts = {
   },
   productsHub: {
     title: '產品管理',
-    description: '管理產品目錄、品項與分類',
+    description: '管理產品目錄、品項、分類與貨品類型',
     cardItemsTitle: '產品品項',
     cardItemsDesc: '管理產品品項，包含明細、定價與庫存。',
     cardCategoriesTitle: '產品分類',
     cardCategoriesDesc: '以分類與類別整理產品。',
+    cardItemTypesTitle: '貨品類型',
+    cardItemTypesDesc: '管理貨品類型，例如庫存、非庫存、月費等。',
   },
   administrationHub: {
     title: '系統管理',

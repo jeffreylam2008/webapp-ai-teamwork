@@ -47,6 +47,7 @@ export const en = {
     type: 'Type',
     invoiceSubtype: 'Invoice Type',
     billingPeriod: 'Billing Period',
+    recurring: 'Recurring',
     customer: 'Customer',
     totalAmount: 'Total Amount',
     shop: 'Shop',
@@ -55,7 +56,13 @@ export const en = {
     status: 'Status',
     created: 'Created at',
   },
-  actions: { viewInvoice: 'View Invoice', voidInvoice: 'Void invoice', cloneInvoice: 'Copy to new invoice' },
+  actions: {
+    viewInvoice: 'View Invoice',
+    voidInvoice: 'Void invoice',
+    cloneInvoice: 'Copy to new invoice',
+    recurringOn: 'Recurring on — next invoice after billing end date',
+    recurringOff: 'Recurring off',
+  },
   rowStatus: {
     Draft: 'Draft',
     Active: 'Active',
@@ -99,6 +106,10 @@ export const en = {
     failedClone: 'Failed to copy invoice',
     errorClone: 'Error copying invoice',
     failedGenerateNumber: 'Failed to generate invoice number',
+    recurringUpdated: 'Recurring setting updated',
+    recurringFailed: 'Failed to update recurring setting',
+    recurringGenerated: (n: number) =>
+      n === 1 ? 'Created 1 next-period monthly invoice' : `Created ${n} next-period monthly invoices`,
   },
   detailPage: {
     title: (code: string) => `Invoice: ${code}`,

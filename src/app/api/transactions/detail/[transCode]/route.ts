@@ -65,6 +65,7 @@ export async function GET(
         h.invoice_subtype,
         h.billing_period_from,
         h.billing_period_to,
+        h.is_recurring,
         h.create_date,
         h.modify_date,
         c.name AS customer_name,

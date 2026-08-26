@@ -13,7 +13,7 @@ import {
   CloseCircleOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
-import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin } from 'antd';
+import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin, Switch } from 'antd';
 import { Dayjs } from 'dayjs';
 import {
   getInvoiceModuleConfig,
@@ -54,6 +54,7 @@ interface InvoiceTransaction {
   invoice_subtype?: string;
   billing_period_from?: string;
   billing_period_to?: string;
+  is_recurring?: number;
 }
 
 export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleMode }) {
@@ -84,6 +85,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
   // Browser session for invoice number generator (used on create page save)
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [cloningId, setCloningId] = useState<string | null>(null);
+  const [recurringSavingId, setRecurringSavingId] = useState<string | null>(null);
 
   // Refs for mount + filter change tracking
   const hasInitialFetch = useRef(false);
@@ -153,9 +155,35 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     if (!hasInitialFetch.current && !isMounted.current) {
       isMounted.current = true;
       hasInitialFetch.current = true;
-      fetchTransactions(1, pagination.pageSize);
+      const boot = async () => {
+        if (config.isMonthly && token) {
+          try {
+            const res = await fetchWithAuth('/api/transactions/generate-recurring-monthly', token, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: '{}',
+            });
+            const json = (await res.json()) as { success?: boolean; count?: number };
+            if (json.success && Number(json.count || 0) > 0) {
+              messageApi.success(t.prompts.recurringGenerated(Number(json.count)));
+            }
+          } catch {
+            // List still loads even if generation fails
+          }
+        }
+        await fetchTransactions(1, pagination.pageSize);
+      };
+      void boot();
     }
-  }, [authLoading, fetchTransactions, pagination.pageSize]);
+  }, [
+    authLoading,
+    config.isMonthly,
+    fetchTransactions,
+    messageApi,
+    pagination.pageSize,
+    t.prompts,
+    token,
+  ]);
 
   // Refetch when filters change (but skip initial mount)
   useEffect(() => {
@@ -198,6 +226,69 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
   const handleCreateInvoice = () => {
     router.push(invoiceDraftCreatePath(config));
   };
+
+  const handleToggleRecurring = useCallback(
+    async (record: InvoiceTransaction, checked: boolean) => {
+      const id = (record.transaction_id || '').trim();
+      if (!id) return;
+      if (record.status === 'Void' || Number(record.is_void ?? 0) === 1) {
+        messageApi.error(t.prompts.recurringFailed);
+        return;
+      }
+      setRecurringSavingId(id);
+      const prev = Number(record.is_recurring ?? 0) === 1;
+      setTransactions((rows) =>
+        rows.map((row) =>
+          row.transaction_id === id ? { ...row, is_recurring: checked ? 1 : 0 } : row
+        )
+      );
+      try {
+        const res = await fetchWithAuth('/api/transactions/set-invoice-recurring', token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transCode: id, is_recurring: checked ? 1 : 0 }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          error?: string;
+          generated?: unknown[];
+        };
+        if (!json.success) {
+          setTransactions((rows) =>
+            rows.map((row) =>
+              row.transaction_id === id ? { ...row, is_recurring: prev ? 1 : 0 } : row
+            )
+          );
+          messageApi.error(json.error || t.prompts.recurringFailed);
+          return;
+        }
+        const generatedCount = Array.isArray(json.generated) ? json.generated.length : 0;
+        if (generatedCount > 0) {
+          messageApi.success(t.prompts.recurringGenerated(generatedCount));
+          await fetchTransactions(pagination.current, pagination.pageSize);
+        } else {
+          messageApi.success(t.prompts.recurringUpdated);
+        }
+      } catch {
+        setTransactions((rows) =>
+          rows.map((row) =>
+            row.transaction_id === id ? { ...row, is_recurring: prev ? 1 : 0 } : row
+          )
+        );
+        messageApi.error(t.prompts.recurringFailed);
+      } finally {
+        setRecurringSavingId(null);
+      }
+    },
+    [
+      fetchTransactions,
+      messageApi,
+      pagination.current,
+      pagination.pageSize,
+      t.prompts,
+      token,
+    ]
+  );
 
   const handleCloneInvoice = useCallback(
     async (invoiceId: string) => {
@@ -441,6 +532,28 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
                 return `${from || '?'} – ${to || '?'}`;
               },
             },
+            {
+              title: t.columns.recurring,
+              key: 'is_recurring',
+              width: 110,
+              align: 'center' as const,
+              render: (_: unknown, record: InvoiceTransaction) => {
+                const id = (record.transaction_id || '').trim();
+                const isVoid = record.status === 'Void' || Number(record.is_void ?? 0) === 1;
+                const checked = Number(record.is_recurring ?? 0) === 1;
+                return (
+                  <Tooltip title={checked ? t.actions.recurringOn : t.actions.recurringOff}>
+                    <Switch
+                      checked={checked}
+                      loading={recurringSavingId === id}
+                      disabled={isVoid || !can('create_invoice') || !id}
+                      onChange={(value) => void handleToggleRecurring(record, value)}
+                      size="small"
+                    />
+                  </Tooltip>
+                );
+              },
+            },
           ]
         : []),
       {
@@ -542,7 +655,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
           date ? formatDisplayDateTime(date, lang === 'zh-Hant' ? 'zh-Hant-HK' : 'en-GB') : t.detailLabels.na,
       },
     ],
-    [t, lang, router, messageApi, can, voidingId, cloningId, handleVoidInvoice, handleCloneInvoice, config]
+    [t, lang, router, messageApi, can, voidingId, cloningId, recurringSavingId, handleVoidInvoice, handleCloneInvoice, handleToggleRecurring, config]
   );
 
   // State management

@@ -168,6 +168,7 @@ export async function GET(request: NextRequest) {
         h.invoice_subtype,
         h.billing_period_from,
         h.billing_period_to,
+        h.is_recurring,
         CASE WHEN (${poMatch.sql}) THEN IF(
           NOT EXISTS (
             SELECT 1

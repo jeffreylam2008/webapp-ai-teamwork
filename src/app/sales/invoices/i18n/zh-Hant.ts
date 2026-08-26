@@ -46,6 +46,7 @@ export const zhHant = {
     type: '類型',
     invoiceSubtype: '發票類型',
     billingPeriod: '帳單期間',
+    recurring: '循環',
     customer: '客戶',
     totalAmount: '總金額',
     shop: '店舖',
@@ -54,7 +55,13 @@ export const zhHant = {
     status: '狀態',
     created: '建立',
   },
-  actions: { viewInvoice: '檢視發票', voidInvoice: '作廢發票', cloneInvoice: '複製為新發票' },
+  actions: {
+    viewInvoice: '檢視發票',
+    voidInvoice: '作廢發票',
+    cloneInvoice: '複製為新發票',
+    recurringOn: '已啟用循環 — 帳單結束日後自動建立下一期',
+    recurringOff: '已關閉循環',
+  },
   rowStatus: {
     Draft: '草稿',
     Active: '有效',
@@ -98,6 +105,10 @@ export const zhHant = {
     failedClone: '無法複製發票',
     errorClone: '複製發票時發生錯誤',
     failedGenerateNumber: '無法產生發票編號',
+    recurringUpdated: '循環設定已更新',
+    recurringFailed: '無法更新循環設定',
+    recurringGenerated: (n: number) =>
+      n === 1 ? '已建立 1 張下一期月結發票' : `已建立 ${n} 張下一期月結發票`,
   },
   detailPage: {
     title: (code: string) => `發票：${code}`,

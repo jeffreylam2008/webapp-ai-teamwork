@@ -3,7 +3,7 @@ import dbService from '@/lib/database';
 let ensured = false;
 
 /**
- * Adds invoice subtype + billing period columns to t_transaction_h when missing.
+ * Adds invoice subtype + billing period + recurrence columns to t_transaction_h when missing.
  * t_transaction_d and t_transaction_t are unchanged — monthly invoices use the same line/payment rows.
  */
 export async function ensureInvoiceSubtypeColumns(): Promise<void> {
@@ -14,7 +14,12 @@ export async function ensureInvoiceSubtypeColumns(): Promise<void> {
      FROM INFORMATION_SCHEMA.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME = 't_transaction_h'
-       AND COLUMN_NAME IN ('invoice_subtype', 'billing_period_from', 'billing_period_to')`
+       AND COLUMN_NAME IN (
+         'invoice_subtype',
+         'billing_period_from',
+         'billing_period_to',
+         'is_recurring'
+       )`
   );
   const existing = new Set((colResult.data || []).map((r) => String(r.column_name).toLowerCase()));
 
@@ -37,6 +42,13 @@ export async function ensureInvoiceSubtypeColumns(): Promise<void> {
       `ALTER TABLE t_transaction_h
        ADD COLUMN billing_period_to DATE NULL
        COMMENT 'Monthly invoice billing period end'`
+    );
+  }
+  if (!existing.has('is_recurring')) {
+    await dbService.query(
+      `ALTER TABLE t_transaction_h
+       ADD COLUMN is_recurring TINYINT(1) NOT NULL DEFAULT 0
+       COMMENT '1 = auto-create next monthly invoice after billing_period_to'`
     );
   }
 

@@ -6,7 +6,9 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getPurchaseOrderTexts } from './i18n';
 import { PlusOutlined, ReloadOutlined, FilterOutlined, EyeOutlined, ImportOutlined, CopyOutlined, DeleteOutlined } from '@ant-design/icons';
-import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin } from 'antd';
+import { App, Modal, Button, DatePicker, Space, Tooltip, Spin } from 'antd';
+import DraggableColumnsTable from '@/components/DraggableColumnsTable';
+import PageLoadingCenter from '@/components/PageLoadingCenter';
 import { Dayjs } from 'dayjs';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -49,7 +51,7 @@ export default function PurchaseOrdersPage() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getPurchaseOrderTexts(lang);
   const { token } = useAuth();
-  const { can } = usePermissions();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { modal, message } = App.useApp();
   const { pageSizeDefault, pageSizeMax, pageSizeOptions } = useSystemPagination();
   const [transactions, setTransactions] = useState<PurchaseOrderTransaction[]>([]);
@@ -496,7 +498,9 @@ export default function PurchaseOrdersPage() {
       title={t.listPage.title}
       description={t.listPage.description}
     >
-      {!can('view_po') ? (
+      {permissionsLoading ? (
+        <PageLoadingCenter />
+      ) : !can('view_po') ? (
         <div className="px-8 py-6 text-gray-600">{t.listPage.noPermission}</div>
       ) : (
       <Spin spinning={loading}>
@@ -576,7 +580,8 @@ export default function PurchaseOrdersPage() {
           </div>
         ) : (
           <div className="w-full overflow-x-auto">
-            <Table
+            <DraggableColumnsTable
+              tableId="purchase-orders"
               columns={displayColumns}
               dataSource={transactions}
               rowKey="uid"

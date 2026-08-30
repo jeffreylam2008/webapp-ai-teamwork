@@ -18,7 +18,9 @@ import {
   createInvoiceFromSalesOrder,
   getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
-import { Modal, Table, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
+import { Modal, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
+import DraggableColumnsTable from '@/components/DraggableColumnsTable';
+import PageLoadingCenter from '@/components/PageLoadingCenter';
 import { Dayjs } from 'dayjs';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -64,7 +66,7 @@ export default function OrdersPage() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getSalesOrderTexts(lang), [lang]);
   const { token } = useAuth();
-  const { can } = usePermissions();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { modal, message: messageApi } = App.useApp();
   const { pageSizeDefault, pageSizeMax, pageSizeOptions } = useSystemPagination();
   const [transactions, setTransactions] = useState<OrderTransaction[]>([]);
@@ -584,7 +586,9 @@ export default function OrdersPage() {
       title={t.listPage.title}
       description={t.listPage.description}
     >
-      {!can('view_sales_order') ? (
+      {permissionsLoading ? (
+        <PageLoadingCenter />
+      ) : !can('view_sales_order') ? (
         <div className="px-8 py-6 text-gray-600">{t.listPage.noPermission}</div>
       ) : (
       <>
@@ -649,7 +653,8 @@ export default function OrdersPage() {
           </div>
         ) : (
           <div className="w-full overflow-x-auto">
-            <Table
+            <DraggableColumnsTable
+              tableId="sales-orders"
               columns={displayColumns}
               dataSource={transactions}
               rowKey="uid"

@@ -36,6 +36,8 @@ import { getMenuLabel } from '@/lib/i18n/menu';
 import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
 import { antdLocaleEnUS, getAntdLocale } from '@/lib/i18n/antdLocale';
 import { AppSpinIndicator } from '@/components/AppSpinIndicator';
+import PageTransitionOverlay from '@/components/PageTransitionOverlay';
+import PageLoadingCenter from '@/components/PageLoadingCenter';
 
 const MIN_SIDEBAR_WIDTH = 200;
 const MAX_SIDEBAR_WIDTH = 600;
@@ -54,6 +56,9 @@ const geistMono = Geist_Mono({
 // Import menu data from JSON files
 import menuData from "@/data/base-menu.json";
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { PermissionsProvider } from '@/contexts/PermissionsContext';
+import { LanguageProvider, useAppLanguage } from '@/contexts/LanguageContext';
+import { getCachedAppLanguage } from '@/lib/i18n/language';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -106,7 +111,9 @@ function safeParseJson<T>(raw: string | null, fallback: T): T {
 }
 
 function MinimalChrome({ children }: { children: React.ReactNode }) {
-  const [antdLocale, setAntdLocale] = useState<Locale>(antdLocaleEnUS);
+  const [antdLocale, setAntdLocale] = useState<Locale>(() =>
+    getAntdLocale(getCachedAppLanguage() ?? DEFAULT_APP_LANGUAGE)
+  );
 
   useEffect(() => {
     const sync = () => {
@@ -148,6 +155,7 @@ function MinimalChrome({ children }: { children: React.ReactNode }) {
 
 function LayoutContent({ children }: { children: React.ReactNode }) {
   const { user, logout, token, isAuthenticated, loading: authLoading } = useAuth();
+  const { language: appLanguage, ready: languageReady } = useAppLanguage();
   const pathname = usePathname();
   const router = useRouter();
   const { can, loading: permissionsLoading } = usePermissions();
@@ -166,8 +174,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>([]);
+  const [pageNavigating, setPageNavigating] = useState(false);
   const [systemLogo, setSystemLogo] = useState<string | null>(null);
-  const [appLanguage, setAppLanguage] = useState<AppLanguage>(DEFAULT_APP_LANGUAGE);
   const resizerRef = useRef<HTMLDivElement>(null);
   const bc = useMemo(() => getBreadcrumbLabels(appLanguage), [appLanguage]);
   const antdLocale = useMemo(() => getAntdLocale(appLanguage), [appLanguage]);
@@ -175,6 +183,12 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!pageNavigating) return;
+    const id = window.setTimeout(() => setPageNavigating(false), 150);
+    return () => window.clearTimeout(id);
+  }, [pathname, pageNavigating]);
 
   // Load system logo from t_systems (sidebar header; no name in sidebar)
   // Note: skip on /login and /print pages to avoid duplicate branding calls
@@ -191,43 +205,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     load();
   }, [isLoginPage, isPrintPreviewPage]);
 
-  // Load app language from global system setting (t_systems.language)
-  useEffect(() => {
-    if (isLoginPage || isPrintPreviewPage) return;
-    if (!token) return;
-
-    const load = async () => {
-      try {
-        const res = await fetchWithAuth('/api/system/language', token, { cache: 'no-store' });
-        const result = await res.json();
-        if (result?.success) {
-          const next = resolveAppLanguage(result.data?.language);
-          setAppLanguage(next);
-          sessionStorage.setItem('__app_language', next);
-        }
-      } catch {
-        // Keep existing value.
-      }
-    };
-
-    void load();
-  }, [isLoginPage, isPrintPreviewPage, token]);
-
-  // When language is changed elsewhere (e.g. Administration → System), refresh sidebar labels
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<string | undefined>).detail;
-      const next = resolveAppLanguage(detail);
-      setAppLanguage(next);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('__app_language', next);
-      }
-    };
-    window.addEventListener('app-language-changed', handler);
-    return () => window.removeEventListener('app-language-changed', handler);
-  }, []);
-
-  // Sort menu data by order
+  // Load system logo from t_systems (sidebar header; no name in sidebar)
   const sortedMenuData = React.useMemo(() => {
     return (menuData as MenuDataItem[]).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, []);
@@ -421,6 +399,9 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       }
       return;
     }
+    if (href !== pathname) {
+      setPageNavigating(true);
+    }
     router.push(href);
   };
 
@@ -564,12 +545,22 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // Initial auth check: show spinner instead of sidebar flash / "Loading..." text
+  if (authLoading) {
+    return (
+      <MinimalChrome>
+        <PageLoadingCenter minHeight={480} />
+      </MinimalChrome>
+    );
+  }
+
   // Regular layout with sidebar and header
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <ConfigProvider
           locale={antdLocale}
+          spin={{ indicator: <AppSpinIndicator /> }}
           theme={{
             token: {
               fontFamily: geistSans.style.fontFamily,
@@ -729,9 +720,13 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
                 padding: 0,
                 background: '#fff',
                 minHeight: 280,
+                position: 'relative',
               }}>
+                <PageTransitionOverlay
+                  visible={pageNavigating || permissionsLoading || !languageReady}
+                />
                 <ProtectedRoute>
-                  {children}
+                  {languageReady ? children : null}
                 </ProtectedRoute>
               </Layout.Content>
             </Layout>
@@ -750,7 +745,11 @@ export default function RootLayout({
 }>) {
   return (
     <AuthProvider>
-      <LayoutContent>{children}</LayoutContent>
+      <LanguageProvider>
+        <PermissionsProvider>
+          <LayoutContent>{children}</LayoutContent>
+        </PermissionsProvider>
+      </LanguageProvider>
     </AuthProvider>
   );
 }

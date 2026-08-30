@@ -4,7 +4,9 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { EyeOutlined, PlusOutlined, ReloadOutlined, FilterOutlined, FileTextOutlined, FileSyncOutlined, ExclamationCircleOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons';
-import { Modal, message, Table, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
+import { Modal, message, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
+import DraggableColumnsTable from '@/components/DraggableColumnsTable';
+import PageLoadingCenter from '@/components/PageLoadingCenter';
 import { Dayjs } from 'dayjs';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -48,7 +50,7 @@ export default function QuotationsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { modal } = App.useApp();
-  const { can } = usePermissions();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { token } = useAuth();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getQuotationTexts(lang);
@@ -648,7 +650,9 @@ export default function QuotationsPage() {
       title={t.listPage.title}
       description={t.listPage.description}
     >
-      {!can('view_quotation') ? (
+      {permissionsLoading ? (
+        <PageLoadingCenter />
+      ) : !can('view_quotation') ? (
         <div className="px-8 py-6 text-gray-600">{t.listPage.noPermission}</div>
       ) : (
       <>
@@ -767,7 +771,8 @@ export default function QuotationsPage() {
           </div>
         ) : (
           <div className="w-full overflow-x-auto">
-            <Table
+            <DraggableColumnsTable
+              tableId="quotations"
               columns={displayColumns}
               dataSource={transactions}
               rowKey="uid"

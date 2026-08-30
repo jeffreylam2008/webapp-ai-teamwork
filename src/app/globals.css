@@ -24,6 +24,45 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.page-transition-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.72);
+  pointer-events: none;
+}
+
+.draggable-table-header {
+  cursor: grab;
+  transition: background-color 0.15s ease;
+}
+
+.draggable-table-header:active {
+  cursor: grabbing;
+}
+
+.draggable-table-header.drag-over {
+  background: rgba(24, 144, 255, 0.1);
+}
+
+.draggable-column-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.draggable-column-handle {
+  color: #bfbfbf;
+  font-size: 12px;
+}
+
+.draggable-table-header:hover .draggable-column-handle {
+  color: #8c8c8c;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;

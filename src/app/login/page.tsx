@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { App, Form, Input, Button, Card, Alert, Select, Spin } from 'antd';
+import { AppSpinIndicator } from '@/components/AppSpinIndicator';
 import { UserOutlined, LockOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import SystemLogo from '@/components/SystemLogo';
@@ -80,10 +81,7 @@ function LoginPageContent() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <div className="text-4xl mb-4">⏳</div>
-          <p className="text-gray-600">{lt.loading}</p>
-        </div>
+        <Spin indicator={<AppSpinIndicator size={36} />} />
       </div>
     );
   }

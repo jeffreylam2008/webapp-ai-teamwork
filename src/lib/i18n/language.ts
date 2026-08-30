@@ -17,6 +17,26 @@ function isAppLanguage(value: unknown): value is AppLanguage {
   return value === 'en' || value === 'zh-Hant';
 }
 
+/** Synchronous read of cached language (client only). */
+export function getCachedAppLanguage(): AppLanguage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const cached = sessionStorage.getItem(SESSION_LANGUAGE_KEY);
+    return isAppLanguage(cached) ? cached : null;
+  } catch {
+    return null;
+  }
+}
+
+export function cacheAppLanguage(language: AppLanguage) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(SESSION_LANGUAGE_KEY, language);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * Resolve app language from query override -> global system setting -> browser locale.
  */
@@ -27,8 +47,8 @@ export async function getPreferredAppLanguage(
 
   try {
     if (typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem(SESSION_LANGUAGE_KEY);
-      if (isAppLanguage(cached)) return cached;
+      const cached = getCachedAppLanguage();
+      if (cached) return cached;
     }
 
     const token =

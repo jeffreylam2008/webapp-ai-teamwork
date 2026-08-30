@@ -13,7 +13,9 @@ import {
   CloseCircleOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
-import { App, Modal, Table, Button, DatePicker, Space, Tooltip, Spin, Switch } from 'antd';
+import { App, Modal, Button, DatePicker, Space, Tooltip, Spin, Switch } from 'antd';
+import DraggableColumnsTable from '@/components/DraggableColumnsTable';
+import PageLoadingCenter from '@/components/PageLoadingCenter';
 import { Dayjs } from 'dayjs';
 import {
   getInvoiceModuleConfig,
@@ -65,7 +67,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
   const t = useMemo(() => getInvoiceTexts(lang), [lang]);
   const { message: messageApi, modal } = App.useApp();
   const { token, loading: authLoading } = useAuth();
-  const { can } = usePermissions();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { pageSizeDefault, pageSizeMax, pageSizeOptions } = useSystemPagination();
   const [transactions, setTransactions] = useState<InvoiceTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -709,7 +711,9 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
       title={config.isMonthly ? t.listPage.monthlyTitle : t.listPage.title}
       description={config.isMonthly ? t.listPage.monthlyDescription : t.listPage.description}
     >
-      {!can('view_invoice') ? (
+      {permissionsLoading ? (
+        <PageLoadingCenter />
+      ) : !can('view_invoice') ? (
         <div className="px-8 py-6 text-gray-600">{t.listPage.noPermission}</div>
       ) : (
       <>
@@ -828,7 +832,8 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
           </div>
         ) : (
           <div className="w-full overflow-x-auto">
-            <Table
+            <DraggableColumnsTable
+              tableId={config.isMonthly ? 'invoices-monthly' : 'invoices-standard'}
               columns={displayColumns}
               dataSource={transactions}
               rowKey="uid"

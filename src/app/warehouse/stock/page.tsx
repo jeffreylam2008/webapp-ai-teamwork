@@ -4,7 +4,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { EyeOutlined, EditOutlined, CloseCircleOutlined, PlusOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
-import { Modal, Table, Button, Badge, DatePicker, Select, App, Tooltip, Spin } from 'antd';
+import { Modal, Button, Badge, DatePicker, Select, App, Tooltip, Spin } from 'antd';
+import DraggableColumnsTable from '@/components/DraggableColumnsTable';
 import type { Dayjs } from 'dayjs';
 import { useSystemPagination } from '@/hooks/useSystemPagination';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
@@ -621,7 +622,8 @@ function StockPageContent() {
               )}
             </div>
           ) : (
-            <Table
+            <DraggableColumnsTable
+              tableId="warehouse-stock"
               columns={displayColumns}
               dataSource={filteredTransactions}
               rowKey="uid"

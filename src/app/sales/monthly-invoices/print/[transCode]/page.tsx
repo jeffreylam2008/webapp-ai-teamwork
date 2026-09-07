@@ -1,12 +1,14 @@
 'use client';
 
+import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import PluginRouteGuard from '@install/plugins/PluginRouteGuard';
 import { TransactionPrintPageContent } from '@/print-templates';
 import { PRINT_TEMPLATE_IDS } from '@/print-templates/printTemplateRegistry';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getInvoiceTexts } from '@/app/sales/invoices/i18n';
 
-export default function MonthlyInvoicePrintPage() {
+function MonthlyInvoicePrintContent() {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getInvoiceTexts(lang);
@@ -22,5 +24,21 @@ export default function MonthlyInvoicePrintPage() {
       printButtonText={t.print.print}
       closeButtonText={t.print.close}
     />
+  );
+}
+
+export default function MonthlyInvoicePrintPage() {
+  return (
+    <PluginRouteGuard fallbackHref="/sales/invoices">
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center text-gray-600">
+            Loading…
+          </div>
+        }
+      >
+        <MonthlyInvoicePrintContent />
+      </Suspense>
+    </PluginRouteGuard>
   );
 }

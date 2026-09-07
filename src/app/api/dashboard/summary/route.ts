@@ -11,7 +11,6 @@ import {
   bindEqualsStoredPrefixRef,
   sqlEqualsStoredPrefixRef,
 } from '@/lib/prefixRef';
-import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
 
 const LINE_SALES_EXPR =
   'd.qty * d.price * (1 - COALESCE(d.discount, 0) / 100)';
@@ -32,7 +31,6 @@ function monthBounds(now = new Date()): { start: string; end: string } {
  */
 export async function GET(request: NextRequest) {
   try {
-    await ensurePrefixRefColumn();
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
 

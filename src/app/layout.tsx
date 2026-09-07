@@ -66,6 +66,12 @@ import {
   MENU_PATH_VIEW_PERMISSION,
   canAccessWarehouseStockMenu,
 } from '@/config/transactionPermissions';
+import {
+  getMenuHrefsBlockedByDisabledPlugins,
+  PLUGIN_ENABLED_CHANGED_EVENT,
+  readPluginEnabledMap,
+  type PluginEnabledMap,
+} from '@install/plugins';
 
 type MenuDataItem = {
   key: string;
@@ -79,16 +85,18 @@ type MenuDataItem = {
 function filterMenuByPermission(
   items: MenuDataItem[],
   can: (key: string) => boolean,
-  pathPerm: Record<string, string>
+  pathPerm: Record<string, string>,
+  blockedHrefs?: Set<string>
 ): MenuDataItem[] {
   return items
     .map((item) => {
       if (item.submenu) {
-        const filteredSub = filterMenuByPermission(item.submenu, can, pathPerm);
+        const filteredSub = filterMenuByPermission(item.submenu, can, pathPerm, blockedHrefs);
         if (filteredSub.length === 0) return null;
         return { ...item, submenu: filteredSub };
       }
       if (item.href) {
+        if (blockedHrefs?.has(item.href)) return null;
         if (item.href === '/warehouse/stock') {
           if (!canAccessWarehouseStockMenu(can)) return null;
         } else {
@@ -165,6 +173,8 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === '/login';
   // Print preview: no sidebar or header (new window shows only the print template)
   const isPrintPreviewPage = pathname.includes('/print/');
+  // Install / plugin lab: full page, no app chrome (open by URL only)
+  const isInstallPage = pathname === '/install' || pathname.startsWith('/install/');
   // Session cleared or verify failed (e.g. expired token): no sidebar/header while redirecting to login
   const isUnauthenticatedSettled = !isAuthenticated && !authLoading;
   
@@ -193,7 +203,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   // Load system logo from t_systems (sidebar header; no name in sidebar)
   // Note: skip on /login and /print pages to avoid duplicate branding calls
   useEffect(() => {
-    if (isLoginPage || isPrintPreviewPage) return;
+    if (isLoginPage || isPrintPreviewPage || isInstallPage) return;
     const load = async () => {
       try {
         const data = await fetchSystemBranding();
@@ -203,18 +213,37 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
       }
     };
     load();
-  }, [isLoginPage, isPrintPreviewPage]);
+  }, [isLoginPage, isPrintPreviewPage, isInstallPage]);
+
+  const [pluginEnabledMap, setPluginEnabledMap] = useState<PluginEnabledMap>({});
+
+  useEffect(() => {
+    setPluginEnabledMap(readPluginEnabledMap());
+    const onChanged = (e: Event) => {
+      const detail = (e as CustomEvent<PluginEnabledMap>).detail;
+      if (detail && typeof detail === 'object') {
+        setPluginEnabledMap({ ...detail });
+      } else {
+        setPluginEnabledMap(readPluginEnabledMap());
+      }
+    };
+    window.addEventListener(PLUGIN_ENABLED_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(PLUGIN_ENABLED_CHANGED_EVENT, onChanged);
+  }, []);
 
   // Load system logo from t_systems (sidebar header; no name in sidebar)
   const sortedMenuData = React.useMemo(() => {
     return (menuData as MenuDataItem[]).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, []);
 
-  // Filter menu by user permissions (limited access: hide links user cannot view)
+  // Filter menu by user permissions + disabled plugins
   const filteredMenuData = React.useMemo(() => {
-    if (permissionsLoading) return sortedMenuData;
-    return filterMenuByPermission(sortedMenuData, can, MENU_PATH_VIEW_PERMISSION);
-  }, [sortedMenuData, permissionsLoading, can]);
+    const blocked = getMenuHrefsBlockedByDisabledPlugins(pluginEnabledMap);
+    if (permissionsLoading) {
+      return filterMenuByPermission(sortedMenuData, () => true, {}, blocked);
+    }
+    return filterMenuByPermission(sortedMenuData, can, MENU_PATH_VIEW_PERMISSION, blocked);
+  }, [sortedMenuData, permissionsLoading, can, pluginEnabledMap]);
 
   // Load saved collapsed state from localStorage (run once on mount)
   useEffect(() => {
@@ -529,6 +558,15 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
   // Login: no app chrome
   if (isLoginPage) {
     return <MinimalChrome>{children}</MinimalChrome>;
+  }
+
+  // Install tools: full page without sidebar or header
+  if (isInstallPage) {
+    return (
+      <MinimalChrome>
+        <ProtectedRoute>{children}</ProtectedRoute>
+      </MinimalChrome>
+    );
   }
 
   // Print popup: preview window (toolbar) or bare window (?bare=1, template only + auto print)

@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState, type ReactNode, type CSSProperties } from 'react';
+import { Suspense, useEffect, useMemo, useState, Fragment, type ReactNode, type CSSProperties } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AppstoreOutlined,
@@ -8,6 +8,8 @@ import {
   DollarOutlined,
   FileTextOutlined,
   InboxOutlined,
+  RightOutlined,
+  DownOutlined,
   ShoppingOutlined,
   ShopOutlined,
   TeamOutlined,
@@ -201,47 +203,86 @@ function HomeContent() {
   const visibleMetrics = metricCards.filter((c) => c.visible);
 
   const workflowGroups = useMemo(() => {
-    const salesLinks: WorkflowLink[] = [
-      {
-        key: 'invoices',
-        title: t.links.invoices,
-        description: t.links.invoicesDesc,
-        href: '/sales/invoices',
-        icon: <FileTextOutlined />,
-        color: '#1890ff',
-        visible: can('view_invoice'),
-      },
-      {
-        key: 'orders',
-        title: t.links.salesOrders,
-        description: t.links.salesOrdersDesc,
-        href: '/sales/orders',
-        icon: <ShoppingOutlined />,
-        color: '#13c2c2',
-        visible: can('view_sales_order'),
-      },
-      {
-        key: 'quotations',
-        title: t.links.quotations,
-        description: t.links.quotationsDesc,
-        href: '/sales/quotations',
-        icon: <DollarOutlined />,
-        color: '#722ed1',
-        visible: can('view_quotation'),
-      },
-    ];
+    const quotationLink: WorkflowLink = {
+      key: 'quotations',
+      title: t.links.quotations,
+      description: t.links.quotationsDesc,
+      href: '/sales/quotations',
+      icon: <DollarOutlined />,
+      color: '#722ed1',
+      visible: can('view_quotation'),
+    };
+    const salesOrderLink: WorkflowLink = {
+      key: 'orders',
+      title: t.links.salesOrders,
+      description: t.links.salesOrdersDesc,
+      href: '/sales/orders',
+      icon: <ShoppingOutlined />,
+      color: '#13c2c2',
+      visible: can('view_sales_order'),
+    };
+    const invoiceLink: WorkflowLink = {
+      key: 'invoices',
+      title: t.links.invoices,
+      description: t.links.invoicesDesc,
+      href: '/sales/invoices',
+      icon: <FileTextOutlined />,
+      color: '#1890ff',
+      visible: can('view_invoice'),
+    };
+    const deliveryNoteLink: WorkflowLink = {
+      key: 'dn',
+      title: t.links.deliveryNote,
+      description: t.links.deliveryNoteDesc,
+      href: '/warehouse/delivery-note',
+      icon: <TruckOutlined />,
+      color: '#eb2f96',
+      visible: can('view_delivery_note') || can('create_delivery_note'),
+    };
 
-    const purchasingLinks: WorkflowLink[] = [
-      {
-        key: 'purchases',
-        title: t.links.purchases,
-        description: t.links.purchasesDesc,
-        href: '/purchasing/purchases',
-        icon: <ShopOutlined />,
-        color: '#fa8c16',
-        visible: can('view_po'),
-      },
-    ];
+    const salesMainLinks = [quotationLink, salesOrderLink, invoiceLink].filter((l) => l.visible);
+    const salesDeliveryBranch = deliveryNoteLink.visible ? deliveryNoteLink : null;
+
+    const purchaseOrderLink: WorkflowLink = {
+      key: 'purchases',
+      title: t.links.purchases,
+      description: t.links.purchasesDesc,
+      href: '/purchasing/purchases',
+      icon: <ShopOutlined />,
+      color: '#fa8c16',
+      visible: can('view_po'),
+    };
+    const grnLink: WorkflowLink = {
+      key: 'grn',
+      title: t.links.grn,
+      description: t.links.grnDesc,
+      href: '/warehouse/stock/grn',
+      icon: <InboxOutlined />,
+      color: '#2f54eb',
+      visible: can('view_grn') || can('create_grn'),
+    };
+    const warehouseStockLink: WorkflowLink = {
+      key: 'stock',
+      title: t.links.warehouseStock,
+      description: t.links.warehouseStockDesc,
+      href: '/warehouse/stock',
+      icon: <InboxOutlined />,
+      color: '#52c41a',
+      visible: showWarehouse,
+    };
+
+    // 採購單 → 收貨單 → 倉庫庫存
+    const purchasingFlowLinks: WorkflowLink[] = [];
+    if (purchaseOrderLink.visible) {
+      purchasingFlowLinks.push(purchaseOrderLink);
+      if (grnLink.visible) {
+        purchasingFlowLinks.push(grnLink);
+        if (warehouseStockLink.visible) {
+          purchasingFlowLinks.push(warehouseStockLink);
+        }
+      }
+    }
+    const stockInPurchasingFlow = purchasingFlowLinks.some((l) => l.key === 'stock');
 
     const warehouseLinks: WorkflowLink[] = [
       {
@@ -251,8 +292,9 @@ function HomeContent() {
         href: '/warehouse/stock',
         icon: <InboxOutlined />,
         color: '#52c41a',
-        visible: showWarehouse,
+        visible: showWarehouse && !stockInPurchasingFlow,
       },
+      // Show DN under warehouse only when it is not already branched under sales order
       {
         key: 'dn',
         title: t.links.deliveryNote,
@@ -260,8 +302,11 @@ function HomeContent() {
         href: '/warehouse/delivery-note',
         icon: <TruckOutlined />,
         color: '#eb2f96',
-        visible: can('view_delivery_note') || can('create_delivery_note'),
+        visible:
+          !salesOrderLink.visible &&
+          (can('view_delivery_note') || can('create_delivery_note')),
       },
+      // Show GRN under warehouse only when it is not already in the purchasing flow
       {
         key: 'grn',
         title: t.links.grn,
@@ -269,7 +314,9 @@ function HomeContent() {
         href: '/warehouse/stock/grn',
         icon: <InboxOutlined />,
         color: '#2f54eb',
-        visible: can('view_grn') || can('create_grn'),
+        visible:
+          !purchaseOrderLink.visible &&
+          (can('view_grn') || can('create_grn')),
       },
     ];
 
@@ -282,6 +329,15 @@ function HomeContent() {
         icon: <BarChartOutlined />,
         color: '#1890ff',
         visible: can('view_sales_report'),
+      },
+      {
+        key: 'warehouse-report',
+        title: t.links.warehouseReport,
+        description: t.links.warehouseReportDesc,
+        href: '/reports/warehouse',
+        icon: <BarChartOutlined />,
+        color: '#52c41a',
+        visible: can('view_warehouse_report'),
       },
     ];
 
@@ -327,35 +383,89 @@ function HomeContent() {
       },
     ];
 
-    return [
-      { key: 'sales', title: t.workflowGroups.sales, links: salesLinks.filter((l) => l.visible) },
-      {
-        key: 'purchasing',
+    return {
+      salesFlow: {
+        title: t.workflowGroups.sales,
+        mainLinks: salesMainLinks,
+        /** Branch under sales order: SO ↓ Delivery note */
+        deliveryFromOrders: salesOrderLink.visible ? salesDeliveryBranch : null,
+      },
+      purchasingFlow: {
         title: t.workflowGroups.purchasing,
-        links: purchasingLinks.filter((l) => l.visible),
+        /** Purchase order → Goods received → Warehouse stock */
+        links: purchasingFlowLinks,
       },
-      {
-        key: 'warehouse',
-        title: t.workflowGroups.warehouse,
-        links: warehouseLinks.filter((l) => l.visible),
-      },
-      {
-        key: 'reports',
-        title: t.workflowGroups.reports,
-        links: reportLinks.filter((l) => l.visible),
-      },
-      {
-        key: 'master',
-        title: t.workflowGroups.masterData,
-        links: masterLinks.filter((l) => l.visible),
-      },
-      {
-        key: 'admin',
-        title: t.workflowGroups.administration,
-        links: adminLinks.filter((l) => l.visible),
-      },
-    ].filter((g) => g.links.length > 0);
+      otherGroups: [
+        {
+          key: 'warehouse',
+          title: t.workflowGroups.warehouse,
+          links: warehouseLinks.filter((l) => l.visible),
+        },
+        {
+          key: 'reports',
+          title: t.workflowGroups.reports,
+          links: reportLinks.filter((l) => l.visible),
+        },
+        {
+          key: 'master',
+          title: t.workflowGroups.masterData,
+          links: masterLinks.filter((l) => l.visible),
+        },
+        {
+          key: 'admin',
+          title: t.workflowGroups.administration,
+          links: adminLinks.filter((l) => l.visible),
+        },
+      ].filter((g) => g.links.length > 0),
+    };
   }, [can, showWarehouse, t]);
+
+  const renderWorkflowCard = (link: WorkflowLink) => (
+    <Card
+      hoverable
+      className="cursor-pointer h-full w-full transition-all duration-200 hover:shadow-md"
+      onClick={() => router.push(link.href)}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className="inline-flex items-center justify-center rounded-lg shrink-0"
+          style={{
+            width: 44,
+            height: 44,
+            background: `${link.color}14`,
+            color: link.color,
+            fontSize: 22,
+          }}
+        >
+          {link.icon}
+        </span>
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900 mb-1">{link.title}</div>
+          <Paragraph type="secondary" style={{ margin: 0, fontSize: 13 }} ellipsis={{ rows: 2 }}>
+            {link.description}
+          </Paragraph>
+        </div>
+      </div>
+    </Card>
+  );
+
+  /** Same breakpoints as warehouse stock cards (倉庫庫存). */
+  const workflowCardColProps = { xs: 24 as const, sm: 12 as const, lg: 8 as const, xl: 6 as const };
+
+  const renderFlowArrow = (direction: 'right' | 'down' = 'right') => (
+    <div
+      className={`flex items-center justify-center shrink-0 text-gray-400 ${
+        direction === 'down' ? 'py-1 w-full' : 'py-1 sm:py-0 sm:px-1 sm:h-full sm:min-h-[72px]'
+      }`}
+      aria-hidden
+    >
+      {direction === 'down' ? (
+        <DownOutlined className="text-lg" />
+      ) : (
+        <RightOutlined className="rotate-90 sm:rotate-0 text-lg" />
+      )}
+    </div>
+  );
 
   return (
     <BasicPageLayout
@@ -413,44 +523,86 @@ function HomeContent() {
               {t.workflow}
             </Title>
             <div className="space-y-6">
-              {workflowGroups.map((group) => (
+              {(workflowGroups.salesFlow.mainLinks.length > 0 ||
+                workflowGroups.salesFlow.deliveryFromOrders) && (
+                <div>
+                  <Text strong className="block mb-3 text-gray-700">
+                    {workflowGroups.salesFlow.title}
+                  </Text>
+                  <Row gutter={[16, 16]} align="top">
+                    {workflowGroups.salesFlow.mainLinks.map((link, index) => {
+                      const showDeliveryBranch =
+                        link.key === 'orders' && !!workflowGroups.salesFlow.deliveryFromOrders;
+                      return (
+                        <Fragment key={link.key}>
+                          <Col {...workflowCardColProps}>
+                            <div className="flex flex-col h-full">
+                              {renderWorkflowCard(link)}
+                              {showDeliveryBranch ? (
+                                <div className="flex flex-col items-center mt-2">
+                                  {renderFlowArrow('down')}
+                                  <div className="w-full">
+                                    {renderWorkflowCard(workflowGroups.salesFlow.deliveryFromOrders!)}
+                                  </div>
+                                </div>
+                              ) : null}
+                            </div>
+                          </Col>
+                          {index < workflowGroups.salesFlow.mainLinks.length - 1 ? (
+                            <Col
+                              xs={24}
+                              sm={24}
+                              lg={1}
+                              xl={1}
+                              className="flex items-center justify-center !max-w-none"
+                              flex="none"
+                            >
+                              {renderFlowArrow('right')}
+                            </Col>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </Row>
+                </div>
+              )}
+
+              {workflowGroups.purchasingFlow.links.length > 0 && (
+                <div>
+                  <Text strong className="block mb-3 text-gray-700">
+                    {workflowGroups.purchasingFlow.title}
+                  </Text>
+                  <Row gutter={[16, 16]} align="middle">
+                    {workflowGroups.purchasingFlow.links.map((link, index) => (
+                      <Fragment key={link.key}>
+                        <Col {...workflowCardColProps}>{renderWorkflowCard(link)}</Col>
+                        {index < workflowGroups.purchasingFlow.links.length - 1 ? (
+                          <Col
+                            xs={24}
+                            sm={24}
+                            lg={1}
+                            xl={1}
+                            className="flex items-center justify-center !max-w-none"
+                            flex="none"
+                          >
+                            {renderFlowArrow('right')}
+                          </Col>
+                        ) : null}
+                      </Fragment>
+                    ))}
+                  </Row>
+                </div>
+              )}
+
+              {workflowGroups.otherGroups.map((group) => (
                 <div key={group.key}>
                   <Text strong className="block mb-3 text-gray-700">
                     {group.title}
                   </Text>
                   <Row gutter={[16, 16]}>
                     {group.links.map((link) => (
-                      <Col key={link.key} xs={24} sm={12} lg={8} xl={6}>
-                        <Card
-                          hoverable
-                          className="cursor-pointer h-full transition-all duration-200 hover:shadow-md"
-                          onClick={() => router.push(link.href)}
-                        >
-                          <div className="flex items-start gap-3">
-                            <span
-                              className="inline-flex items-center justify-center rounded-lg shrink-0"
-                              style={{
-                                width: 44,
-                                height: 44,
-                                background: `${link.color}14`,
-                                color: link.color,
-                                fontSize: 22,
-                              }}
-                            >
-                              {link.icon}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="font-semibold text-gray-900 mb-1">{link.title}</div>
-                              <Paragraph
-                                type="secondary"
-                                style={{ margin: 0, fontSize: 13 }}
-                                ellipsis={{ rows: 2 }}
-                              >
-                                {link.description}
-                              </Paragraph>
-                            </div>
-                          </div>
-                        </Card>
+                      <Col key={link.key} {...workflowCardColProps}>
+                        {renderWorkflowCard(link)}
                       </Col>
                     ))}
                   </Row>

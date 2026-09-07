@@ -18,7 +18,7 @@ export type ActionBarSaveShortcutConfig = {
 };
 
 interface BasicPageLayoutProps {
-  breadcrumb: React.ReactNode;
+  breadcrumb?: React.ReactNode;
   buttonBar?: React.ReactNode;
   title?: string;
   description?: string;
@@ -70,9 +70,11 @@ const BasicPageLayout: React.FC<BasicPageLayoutProps> = ({
 
   return (
     <div className="w-full">
-      <div className="px-4 py-3 bg-white border-b border-gray-200">
-        {breadcrumb}
-      </div>
+      {breadcrumb ? (
+        <div className="px-4 py-3 bg-white border-b border-gray-200">
+          {breadcrumb}
+        </div>
+      ) : null}
 
       {buttonBar}
 

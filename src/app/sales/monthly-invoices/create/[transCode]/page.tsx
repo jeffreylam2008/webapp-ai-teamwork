@@ -1,7 +1,12 @@
 'use client';
 
+import PluginRouteGuard from '@install/plugins/PluginRouteGuard';
 import CreateInvoicePageContent from '@/features/invoices/CreateInvoicePageContent';
 
 export default function CreateMonthlyInvoicePage() {
-  return <CreateInvoicePageContent mode="monthly" />;
+  return (
+    <PluginRouteGuard fallbackHref="/sales/invoices">
+      <CreateInvoicePageContent mode="monthly" />
+    </PluginRouteGuard>
+  );
 }

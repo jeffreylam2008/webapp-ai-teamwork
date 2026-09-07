@@ -192,7 +192,7 @@ const EN: HubPagesTexts = {
 
 const ZH_HANT: HubPagesTexts = {
   home: {
-    title: '儀表板',
+    title: '首頁',
     description: '關鍵指標總覽與日常作業快速連結。',
     overview: '總覽',
     workflow: '作業流程',
@@ -243,7 +243,7 @@ const ZH_HANT: HubPagesTexts = {
       users: '用戶',
       usersDesc: '帳號與權限管理',
     },
-    failedLoad: '無法載入儀表板指標',
+    failedLoad: '無法載入首頁指標',
   },
   productsHub: {
     title: '產品管理',

@@ -3,127 +3,15 @@ import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import {
   permissionKeysToAccessRows,
-  accessRowsToPermissionKeys,
-  type EmployeeAccessRow,
+  getUnauthorizedPermissionGrants,
 } from '@/lib/employeeAccess';
-import { FUNCTION_PERMISSION_ROWS, getDefaultAccessFlags } from '@/config/transactionPermissions';
-
-async function ensureEmployeeAccessTable() {
-  await dbService.query(`
-    CREATE TABLE IF NOT EXISTS t_employee_access (
-      uid INT NOT NULL,
-      employee_code VARCHAR(32) NOT NULL,
-      shop_code VARCHAR(32) NOT NULL DEFAULT 'HQ01',
-      \`function\` VARCHAR(32) NOT NULL,
-      sub_function VARCHAR(32) NOT NULL DEFAULT '',
-      a_create TINYINT(1) NOT NULL DEFAULT 0,
-      a_edit TINYINT(1) NOT NULL DEFAULT 0,
-      a_delete TINYINT(1) NOT NULL DEFAULT 0,
-      a_view TINYINT(1) NOT NULL DEFAULT 0,
-      create_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-      modify_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (shop_code, employee_code, \`function\`)
-    )
-  `);
-  await migrateEmployeeAccessAddShopCodeIfNeeded();
-  await ensureUidAutoIncrement();
-}
-
-/** Ensure t_employee_access_default exists: role_code (references t_employee_role), function, a_create, a_edit, a_delete, a_view. No employee_code. */
-async function ensureEmployeeAccessDefaultTable() {
-  try {
-    const cols = await dbService.query<{ COLUMN_NAME: string }>(
-      `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_employee_access_default'`
-    );
-    const names = (cols.data || []).map((c) => c.COLUMN_NAME);
-    if (names.length > 0 && names.includes('employee_code')) {
-      await dbService.query(`DROP TABLE t_employee_access_default`);
-    }
-  } catch {
-    // Table may not exist; ignore
-  }
-  await dbService.query(`
-    CREATE TABLE IF NOT EXISTS t_employee_access_default (
-      role_code INT NOT NULL,
-      \`function\` VARCHAR(32) NOT NULL,
-      a_create TINYINT(1) NOT NULL DEFAULT 0,
-      a_edit TINYINT(1) NOT NULL DEFAULT 0,
-      a_delete TINYINT(1) NOT NULL DEFAULT 0,
-      a_view TINYINT(1) NOT NULL DEFAULT 0,
-      create_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-      modify_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (role_code, \`function\`)
-    )
-  `);
-  const roleResult = await dbService.query<{ role_code: number }>(
-    `SELECT DISTINCT role_code FROM t_employee WHERE role_code IS NOT NULL ORDER BY role_code`
-  );
-  let roleCodes = (roleResult.data || []).map((r) => r.role_code);
-  if (roleCodes.length === 0) roleCodes = [1];
-  for (const roleCode of roleCodes) {
-    for (const row of FUNCTION_PERMISSION_ROWS) {
-      const flags = getDefaultAccessFlags(row);
-      await dbService.query(
-        `INSERT INTO t_employee_access_default (role_code, \`function\`, a_create, a_edit, a_delete, a_view)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE a_create = VALUES(a_create), a_edit = VALUES(a_edit), a_delete = VALUES(a_delete), a_view = VALUES(a_view)`,
-        [roleCode, row.id, flags.a_create, flags.a_edit, flags.a_delete, flags.a_view]
-      );
-    }
-  }
-}
-
-/** If t_employee_access.uid is NOT NULL but not AUTO_INCREMENT, alter it so INSERT can omit uid. */
-async function ensureUidAutoIncrement() {
-  try {
-    const check = await dbService.query<{ EXTRA: string }>(
-      `SELECT EXTRA FROM information_schema.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_employee_access' AND COLUMN_NAME = 'uid'`
-    );
-    if (check.data?.[0]?.EXTRA?.toLowerCase().includes('auto_increment')) return;
-    await dbService.query(
-      `ALTER TABLE t_employee_access MODIFY uid INT NOT NULL AUTO_INCREMENT`
-    );
-  } catch {
-    // Column might not exist or already auto_increment; ignore
-  }
-}
-
-async function migrateEmployeeAccessAddShopCodeIfNeeded() {
-  try {
-    const check = await dbService.query<{ COLUMN_NAME: string }>(
-      `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 't_employee_access' AND COLUMN_NAME = 'shop_code'`
-    );
-    if (check.data && check.data.length > 0) return;
-    await dbService.query(`ALTER TABLE t_employee_access ADD COLUMN shop_code VARCHAR(32) NOT NULL DEFAULT 'HQ01' AFTER employee_code`);
-    await dbService.query(
-      `UPDATE t_employee_access ea INNER JOIN t_employee e ON ea.employee_code = e.employee_code AND ea.uid = e.uid SET ea.shop_code = e.default_shopcode`
-    );
-    await dbService.query(`ALTER TABLE t_employee_access DROP PRIMARY KEY, ADD PRIMARY KEY (shop_code, employee_code, \`function\`)`);
-  } catch {
-    // Column may already exist or PK already updated; ignore
-  }
-}
-
-/** Resolve uid from employee_code and shop so we target the user for the current shop (same employee_code can exist per shop). */
-async function getUidByEmployeeCodeAndShop(employeeCode: string, shopCode: string): Promise<number | null> {
-  if (!shopCode || !shopCode.trim()) {
-    const result = await dbService.query<{ uid: number }>(
-      'SELECT uid FROM t_employee WHERE employee_code = ? LIMIT 1',
-      [employeeCode]
-    );
-    const row = result.data?.[0];
-    return row != null && Number.isFinite(row.uid) ? Number(row.uid) : null;
-  }
-  const result = await dbService.query<{ uid: number }>(
-    'SELECT uid FROM t_employee WHERE employee_code = ? AND default_shopcode = ?',
-    [employeeCode, shopCode.trim()]
-  );
-  const row = result.data?.[0];
-  return row != null && Number.isFinite(row.uid) ? Number(row.uid) : null;
-}
+import { ensureEmployeeAccessTable, getUidByEmployeeCodeAndShop } from '@/lib/employeeAccessDb';
+import {
+  ensureEmployeeAccessDefaultTable,
+  getEmployeePermissionKeys,
+  canManageEmployeeAccess,
+  getLiveRoleCodeForEmployee,
+} from '@/lib/employeeRoleAccess';
 
 /**
  * GET /api/administration/users/[employee_code]/permissions
@@ -154,17 +42,7 @@ export async function GET(
     await ensureEmployeeAccessTable();
     await ensureEmployeeAccessDefaultTable();
 
-    const result = shopCode
-      ? await dbService.query<EmployeeAccessRow>(
-          'SELECT employee_code, `function`, a_create, a_edit, a_delete, a_view FROM t_employee_access WHERE shop_code = ? AND employee_code = ?',
-          [shopCode, employeeCode]
-        )
-      : await dbService.query<EmployeeAccessRow>(
-          'SELECT employee_code, `function`, a_create, a_edit, a_delete, a_view FROM t_employee_access WHERE employee_code = ?',
-          [employeeCode]
-        );
-    const rows = (result.data || []) as EmployeeAccessRow[];
-    const permissions = accessRowsToPermissionKeys(rows);
+    const permissions = await getEmployeePermissionKeys(employeeCode, shopCode);
 
     return NextResponse.json({ success: true, data: permissions });
   } catch (error) {
@@ -210,10 +88,39 @@ export async function PUT(
     const allowed = permissions.filter((p: unknown) => typeof p === 'string' && p.length > 0 && p.length <= 64);
 
     await ensureEmployeeAccessTable();
+
+    const editorCode = String(auth.user.employee_code ?? '').trim();
+    const editorRoleCode = await getLiveRoleCodeForEmployee(editorCode, shopCode, auth.user.role_code);
+    const editorKeys = editorCode ? await getEmployeePermissionKeys(editorCode, shopCode) : [];
+    const editorCanManage = editorCode
+      ? await canManageEmployeeAccess(editorCode, shopCode, editorRoleCode)
+      : false;
+    const existingKeys = await getEmployeePermissionKeys(employeeCode, shopCode);
+    const unauthorized = getUnauthorizedPermissionGrants(
+      editorKeys,
+      existingKeys,
+      allowed,
+      editorCanManage
+    );
+    if (unauthorized.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Only an employee with full access can grant new permissions. Unchecked boxes cannot be enabled by limited users.',
+          unauthorized,
+        },
+        { status: 403 }
+      );
+    }
+
     const rows = permissionKeysToAccessRows(employeeCode, allowed);
 
     const effectiveShop = shopCode || 'HQ01';
-    await dbService.query('DELETE FROM t_employee_access WHERE shop_code = ? AND employee_code = ?', [effectiveShop, employeeCode]);
+    await dbService.query('DELETE FROM t_employee_access WHERE shop_code = ? AND employee_code = ?', [
+      effectiveShop,
+      employeeCode,
+    ]);
     for (const r of rows) {
       await dbService.query(
         `INSERT INTO t_employee_access (employee_code, shop_code, \`function\`, sub_function, a_create, a_edit, a_delete, a_view)

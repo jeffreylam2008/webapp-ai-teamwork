@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
-import { accessRowsToPermissionKeys, type EmployeeAccessRow } from '@/lib/employeeAccess';
+import { accessRowsToPermissionKeys, hasFullTransactionAccess, type EmployeeAccessRow } from '@/lib/employeeAccess';
+import {
+  canManageEmployeeAccess,
+  ensureAdministratorAccessForEmployee,
+  ensureEmployeeRoleTable,
+} from '@/lib/employeeRoleAccess';
 
 /**
  * GET /api/administration/permissions/me
@@ -20,9 +25,25 @@ export async function GET(request: NextRequest) {
 
     const employeeCode = String(auth.user.employee_code ?? '').trim();
     if (!employeeCode) {
-      return NextResponse.json({ success: true, data: [] });
+      return NextResponse.json({ success: true, data: [], can_manage_access: false });
     }
-    const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || null;
+    const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || '';
+    let roleCode = Number(auth.user.role_code ?? 0);
+
+    await ensureEmployeeRoleTable();
+    const employeeRow = shopCode
+      ? await dbService.query<{ role_code: number | null }>(
+          'SELECT role_code FROM t_employee WHERE employee_code = ? AND default_shopcode = ? LIMIT 1',
+          [employeeCode, shopCode]
+        )
+      : await dbService.query<{ role_code: number | null }>(
+          'SELECT role_code FROM t_employee WHERE employee_code = ? LIMIT 1',
+          [employeeCode]
+        );
+    const liveRoleCode = employeeRow.data?.[0]?.role_code;
+    if (liveRoleCode != null && Number.isFinite(Number(liveRoleCode))) {
+      roleCode = Number(liveRoleCode);
+    }
 
     let result: { data?: EmployeeAccessRow[] } = { data: [] };
     if (shopCode) {
@@ -53,10 +74,26 @@ export async function GET(request: NextRequest) {
       if (res?.data) result = res;
     }
 
-    const rows = (result.data || []) as EmployeeAccessRow[];
-    const permissions = accessRowsToPermissionKeys(rows);
+    let permissions = accessRowsToPermissionKeys((result.data || []) as EmployeeAccessRow[]);
 
-    return NextResponse.json({ success: true, data: permissions });
+    const healed = await ensureAdministratorAccessForEmployee(
+      employeeCode,
+      shopCode || 'HQ01',
+      roleCode
+    );
+    if (healed) {
+      permissions = healed;
+    }
+
+    const canManage = await canManageEmployeeAccess(employeeCode, shopCode || null, roleCode);
+
+    return NextResponse.json({
+      success: true,
+      data: permissions,
+      can_manage_access: canManage,
+      has_full_transaction_access: hasFullTransactionAccess(permissions),
+      role_code: roleCode,
+    });
   } catch (error) {
     console.error('[API] permissions/me error:', error);
     const msg = error instanceof Error ? error.message : 'Unknown error';

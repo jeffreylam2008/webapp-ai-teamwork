@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               ? result.data.token
               : tokenToVerify;
           setUser(result.data.user);
-          setToken(synced);
+          setToken((prev) => (prev === synced ? prev : synced));
           localStorage.setItem('auth_token', synced);
         } else {
           invalidateClientSession();

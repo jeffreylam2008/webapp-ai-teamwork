@@ -91,6 +91,14 @@ export function mimeFromBase64(b64: string): string {
   return 'image/jpeg';
 }
 
+export function shopLogoBase64ToDataUrl(b64: string | null | undefined): string | null {
+  if (b64 == null) return null;
+  const trimmed = String(b64).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('data:image/')) return trimmed;
+  return `data:${mimeFromBase64(trimmed)};base64,${trimmed}`;
+}
+
 /** Build a data URL from DB image_body (raw base64, data URL, or serialized Buffer JSON). */
 export function imageBodyToDataUrl(
   imageBody: unknown,

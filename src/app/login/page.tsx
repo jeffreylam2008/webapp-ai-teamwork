@@ -3,14 +3,15 @@
 import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { App, Form, Input, Button, Card, Alert, Select, Spin } from 'antd';
-import { AppSpinIndicator } from '@/components/AppSpinIndicator';
 import { UserOutlined, LockOutlined, ShopOutlined } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import SystemLogo from '@/components/SystemLogo';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getLoginPageTexts } from '@/lib/i18n/loginPage';
 import { useLoginShops } from '@/hooks/useLoginShops';
-import { fetchSystemBranding, pickLoginLogo } from '@/lib/systemBranding';
+import { fetchSystemBranding, pickSystemLogo } from '@/lib/systemBranding';
+import { shopLogoBase64ToDataUrl } from '@/lib/itemImageDisplay';
+import { parseJsonResponse } from '@/lib/parseJsonResponse';
 
 function LoginPageContent() {
   const router = useRouter();
@@ -23,9 +24,11 @@ function LoginPageContent() {
   const [error, setError] = useState<string | null>(null);
   const { shops, loading: shopsLoading, error: shopsError } = useLoginShops();
   const [systemName, setSystemName] = useState<string>(lt.defaultSystemName);
-  const [systemLogo, setSystemLogo] = useState<string | null>(null);
+  const [systemLogo, setSystemLogo] = useState<string>(pickSystemLogo({}));
+  const [fallbackLogo, setFallbackLogo] = useState<string>(pickSystemLogo({}));
   const [form] = Form.useForm();
   const shopsInitializedRef = useRef(false);
+  const selectedShopCode = Form.useWatch('shop_code', form);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,7 +37,9 @@ function LoginPageContent() {
         const data = await fetchSystemBranding();
         if (cancelled) return;
         if (data.system_name) setSystemName(data.system_name);
-        setSystemLogo(pickLoginLogo(data));
+        const logo = pickSystemLogo(data);
+        setFallbackLogo(logo);
+        setSystemLogo(logo);
       } catch {
         // keep defaults
       }
@@ -43,6 +48,45 @@ function LoginPageContent() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const shopCode = typeof selectedShopCode === 'string' ? selectedShopCode.trim() : '';
+    if (!shopCode) {
+      setSystemLogo(fallbackLogo);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/shops/${encodeURIComponent(shopCode)}/logo`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) {
+          if (!cancelled) setSystemLogo(fallbackLogo);
+          return;
+        }
+        const result = await parseJsonResponse<{
+          success?: boolean;
+          data?: { logo_pic?: string | null };
+        }>(res);
+        const pic =
+          result?.success && typeof result.data?.logo_pic === 'string'
+            ? result.data.logo_pic.trim()
+            : '';
+        const dataUrl = shopLogoBase64ToDataUrl(pic);
+        if (!cancelled) {
+          setSystemLogo(dataUrl || fallbackLogo);
+        }
+      } catch {
+        if (!cancelled) setSystemLogo(fallbackLogo);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedShopCode, fallbackLogo]);
 
   useEffect(() => {
     if (shopsError) {
@@ -81,7 +125,10 @@ function LoginPageContent() {
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <Spin indicator={<AppSpinIndicator size={36} />} />
+        <div className="text-center">
+          <div className="text-4xl mb-4">⏳</div>
+          <p className="text-gray-600">{lt.loading}</p>
+        </div>
       </div>
     );
   }
@@ -92,7 +139,11 @@ function LoginPageContent() {
         <Card className="shadow-2xl rounded-lg">
           <div className="text-center mb-8">
             <div className="mb-4 flex justify-center">
-              <SystemLogo logo={systemLogo} iconStyle={{ fontSize: 48 }} imageSize={64} />
+              <SystemLogo
+                logo={systemLogo}
+                iconStyle={{ fontSize: 48, color: '#1677ff' }}
+                imageSize={64}
+              />
             </div>
             <h1 className="text-3xl font-bold text-gray-800 mb-2">
               {systemName}

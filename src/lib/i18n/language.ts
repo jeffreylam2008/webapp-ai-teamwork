@@ -89,3 +89,19 @@ export async function getPreferredAppLanguage(
   return DEFAULT_APP_LANGUAGE;
 }
 
+/** Prefetch + cache language (used by ApplicationEnvGuard after env unlock). */
+export async function warmAppLanguageCache(queryLang?: string | null): Promise<AppLanguage> {
+  try {
+    const preferred = await getPreferredAppLanguage(queryLang);
+    cacheAppLanguage(preferred);
+    return preferred;
+  } catch {
+    const fallback =
+      typeof window !== 'undefined'
+        ? resolveAppLanguage(window.navigator.language)
+        : DEFAULT_APP_LANGUAGE;
+    cacheAppLanguage(fallback);
+    return fallback;
+  }
+}
+

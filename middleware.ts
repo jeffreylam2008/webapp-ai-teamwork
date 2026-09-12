@@ -10,6 +10,16 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 const jwtSecretKey = new TextEncoder().encode(JWT_SECRET);
 const isDevelopment = process.env.NODE_ENV === 'development';
 
+const ENV_STATUS_PATH = '/api/system/env-status';
+
+function isApplicationEnvLocked(): boolean {
+  return (
+    !process.env.DB_USER?.trim() ||
+    process.env.DB_PASSWORD === undefined ||
+    !process.env.DB_NAME?.trim()
+  );
+}
+
 /**
  * API paths that do not require a JWT (public handlers).
  * Page routes (/, /login, /sales, …) are NOT run through this middleware — see `config.matcher`
@@ -65,6 +75,21 @@ async function verifyTokenSignature(token: string): Promise<boolean> {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname === ENV_STATUS_PATH || pathname.startsWith(`${ENV_STATUS_PATH}/`)) {
+    return NextResponse.next();
+  }
+
+  if (isApplicationEnvLocked()) {
+    return NextResponse.json(
+      {
+        success: false,
+        locked: true,
+        error: 'Application locked: configure DB_USER, DB_PASSWORD, and DB_NAME in .env.local.',
+      },
+      { status: 503 }
+    );
+  }
 
   if (publicApiPaths.some((p) => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next();

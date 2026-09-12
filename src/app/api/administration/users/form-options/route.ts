@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
+import { ensureEmployeeRoleTable, listEmployeeRoles } from '@/lib/employeeRoleAccess';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,12 +14,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
     }
 
-    const roleResult = await dbService.query<{ role_code: number; name: string }>(
-      'SELECT role_code, name FROM t_employee_role ORDER BY role_code ASC'
-    );
-    let roles = (roleResult.data || []).map((r) => ({
+    await ensureEmployeeRoleTable();
+    const roleRows = await listEmployeeRoles();
+    let roles = roleRows.map((r) => ({
       role_code: Number(r.role_code),
-      name: String(r.name || r.role_code),
+      name: String(r.role_name || r.role_key || r.role_code),
     }));
 
     if (roles.length === 0) {

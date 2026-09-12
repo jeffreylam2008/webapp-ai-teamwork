@@ -6,6 +6,9 @@ export type SystemBrandingData = {
   shop_logo?: string | null;
 };
 
+/** Default react-icons / Ant icon name used when none is configured. */
+export const DEFAULT_SYSTEM_LOGO = 'BsShopWindow';
+
 type SystemNameApiResponse = {
   success?: boolean;
   data?: SystemBrandingData;
@@ -38,19 +41,23 @@ export async function fetchSystemBranding(): Promise<SystemBrandingData> {
   return brandingPromise;
 }
 
-/** Sidebar prefers shop_logo, then logo. */
-export function pickSidebarLogo(data: SystemBrandingData): string | null {
-  const shop = data.shop_logo;
+/** App logo: main logo, then shop logo, then default icon name. */
+export function pickSystemLogo(data: SystemBrandingData): string {
   const main = data.logo;
-  if (typeof shop === 'string' && shop.trim() !== '') return shop.trim();
   if (typeof main === 'string' && main.trim() !== '') return main.trim();
-  return null;
+  const shop = data.shop_logo;
+  if (typeof shop === 'string' && shop.trim() !== '') return shop.trim();
+  return DEFAULT_SYSTEM_LOGO;
 }
 
-/** Login page uses main logo. */
-export function pickLoginLogo(data: SystemBrandingData): string | null {
-  const main = data.logo;
-  return typeof main === 'string' && main.trim() !== '' ? main.trim() : null;
+/** Sidebar prefers shop_logo, then logo, then default. */
+export function pickSidebarLogo(data: SystemBrandingData): string {
+  return pickSystemLogo(data);
+}
+
+/** Login page logo helper (same resolution as pickSystemLogo). */
+export function pickLoginLogo(data: SystemBrandingData): string {
+  return pickSystemLogo(data);
 }
 
 export function clearSystemBrandingCache(): void {

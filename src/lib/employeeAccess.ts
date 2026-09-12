@@ -1,4 +1,7 @@
-import { FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
+import {
+  FUNCTION_PERMISSION_ROWS,
+  TRANSACTION_PERMISSIONS,
+} from '@/config/transactionPermissions';
 
 export interface EmployeeAccessRow {
   employee_code: string;
@@ -40,4 +43,29 @@ export function accessRowsToPermissionKeys(rows: EmployeeAccessRow[]): string[] 
     if (r.a_view) keys.push(row.view);
   });
   return keys;
+}
+
+/** True when the user has every transaction permission key (Grant full access). */
+export function hasFullTransactionAccess(permissionKeys: Iterable<string>): boolean {
+  const set = permissionKeys instanceof Set ? permissionKeys : new Set(permissionKeys);
+  return TRANSACTION_PERMISSIONS.every((p) => set.has(p.key));
+}
+
+/**
+ * Non–full-access editors may keep or revoke existing rights, but cannot add new ones.
+ * Returns newly requested keys that the editor is not allowed to grant.
+ */
+export function getUnauthorizedPermissionGrants(
+  editorKeys: Iterable<string>,
+  targetExistingKeys: Iterable<string>,
+  requestedKeys: Iterable<string>,
+  editorCanManageAccess = false
+): string[] {
+  if (editorCanManageAccess || hasFullTransactionAccess(editorKeys)) return [];
+  const existing = new Set(targetExistingKeys);
+  const unauthorized: string[] = [];
+  for (const key of requestedKeys) {
+    if (!existing.has(key)) unauthorized.push(key);
+  }
+  return unauthorized;
 }

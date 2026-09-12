@@ -15,6 +15,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   AppstoreOutlined: <AppstoreOutlined />,
   HomeOutlined: <HomeOutlined />,
   ShopOutlined: <ShopOutlined />,
+  BsShopWindow: <ShopOutlined />,
   SettingOutlined: <SettingOutlined />,
   UserOutlined: <UserOutlined />,
 };
@@ -23,7 +24,12 @@ const DEFAULT_ICON = <AppstoreAddOutlined />;
 
 function isImageUrl(value: string): boolean {
   const v = value.trim();
-  return v.startsWith('http://') || v.startsWith('https://') || v.startsWith('/');
+  return (
+    v.startsWith('http://') ||
+    v.startsWith('https://') ||
+    v.startsWith('/') ||
+    v.startsWith('data:image/')
+  );
 }
 
 interface SystemLogoProps {

@@ -31,6 +31,7 @@ import {
 } from '@ant-design/icons';
 import SystemLogo from '@/components/SystemLogo';
 import { fetchSystemBranding, pickSidebarLogo } from '@/lib/systemBranding';
+import ApplicationEnvGuard from '@/components/ApplicationEnvGuard';
 import { DEFAULT_APP_LANGUAGE, resolveAppLanguage, type AppLanguage } from '@/lib/i18n/language';
 import { getMenuLabel } from '@/lib/i18n/menu';
 import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
@@ -782,12 +783,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <AuthProvider>
-      <LanguageProvider>
-        <PermissionsProvider>
-          <LayoutContent>{children}</LayoutContent>
-        </PermissionsProvider>
-      </LanguageProvider>
-    </AuthProvider>
+    <ApplicationEnvGuard>
+      <AuthProvider>
+        <LanguageProvider>
+          <PermissionsProvider>
+            <LayoutContent>{children}</LayoutContent>
+          </PermissionsProvider>
+        </LanguageProvider>
+      </AuthProvider>
+    </ApplicationEnvGuard>
   );
 }

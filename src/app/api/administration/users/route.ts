@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
-import { seedEmployeeAccessFromRole } from '@/lib/seedEmployeeAccessFromRole';
+import {
+  applyRoleDefaultsToEmployee,
+  canManageEmployeeAccess,
+  ensureEmployeeRoleTable,
+  getLiveRoleCodeForEmployee,
+  listEmployeeRoles,
+} from '@/lib/employeeRoleAccess';
+import { getEmployeeRoleByCode } from '@/config/rolePermissionDefaults';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,15 +23,36 @@ export async function GET(request: NextRequest) {
     }
     const shopCode = (result.user.selected_shopcode || result.user.default_shopcode || '').trim() || null;
 
+    await ensureEmployeeRoleTable();
+
     const rows = shopCode
       ? await dbService.query(
-          'SELECT uid, employee_code, username, default_shopcode, role_code, status FROM t_employee WHERE default_shopcode = ? ORDER BY username ASC',
+          `SELECT e.uid, e.employee_code, e.username, e.default_shopcode, e.role_code, e.status,
+                  r.role_key, r.role_name
+           FROM t_employee e
+           LEFT JOIN t_employee_role r ON r.role_code = e.role_code
+           WHERE e.default_shopcode = ?
+           ORDER BY e.username ASC`,
           [shopCode]
         )
       : await dbService.query(
-          'SELECT uid, employee_code, username, default_shopcode, role_code, status FROM t_employee ORDER BY username ASC'
+          `SELECT e.uid, e.employee_code, e.username, e.default_shopcode, e.role_code, e.status,
+                  r.role_key, r.role_name
+           FROM t_employee e
+           LEFT JOIN t_employee_role r ON r.role_code = e.role_code
+           ORDER BY e.username ASC`
         );
-    type Row = { uid: number; employee_code: string; username: string; default_shopcode: string; role_code: number; status: number };
+
+    type Row = {
+      uid: number;
+      employee_code: string;
+      username: string;
+      default_shopcode: string;
+      role_code: number;
+      status: number;
+      role_key: string | null;
+      role_name: string | null;
+    };
     const data = (rows.data || []) as Row[];
     const users = data.map((r) => ({
       uid: r.uid,
@@ -32,6 +60,8 @@ export async function GET(request: NextRequest) {
       username: r.username,
       default_shopcode: r.default_shopcode,
       role_code: r.role_code,
+      role_key: r.role_key ?? null,
+      role_name: r.role_name ?? getEmployeeRoleByCode(r.role_code)?.role_name ?? null,
       status: r.status,
     }));
 
@@ -43,6 +73,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/administration/users
+ * Create employee and apply role default permissions.
+ * Body: { employee_code, username, password, default_shopcode?, role_code?, status? }
+ */
 export async function POST(request: NextRequest) {
   try {
     const token = extractTokenFromRequest(request);
@@ -54,109 +89,81 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
     }
 
+    const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || '';
+    const editorCode = String(auth.user.employee_code ?? '').trim();
+    if (editorCode) {
+      const canCreate = await canManageEmployeeAccess(
+        editorCode,
+        shopCode || null,
+        await getLiveRoleCodeForEmployee(editorCode, shopCode || null, auth.user.role_code)
+      );
+      if (!canCreate) {
+        return NextResponse.json(
+          { success: false, error: 'Only an employee with full access can create users' },
+          { status: 403 }
+        );
+      }
+    }
+
     const body = await request.json().catch(() => ({}));
-    const employeeCodeRaw = body.employee_code;
-    const username = typeof body.username === 'string' ? body.username.trim() : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    const defaultShopcode =
-      typeof body.default_shopcode === 'string' ? body.default_shopcode.trim() : '';
-    const roleCode = Number(body.role_code);
-    const status = body.status === 0 || body.status === '0' ? 0 : 1;
+    const employeeCode = String(body.employee_code ?? '').trim();
+    const username = String(body.username ?? '').trim();
+    const password = String(body.password ?? '');
+    const defaultShopcode = String(body.default_shopcode ?? shopCode ?? 'HQ01').trim() || 'HQ01';
+    const roleCode = body.role_code != null ? Number(body.role_code) : 2;
+    const status = body.status != null ? Number(body.status) : 1;
 
-    const employeeCode =
-      employeeCodeRaw != null && String(employeeCodeRaw).trim() !== ''
-        ? String(employeeCodeRaw).trim()
-        : '';
-
-    if (!employeeCode || !/^\d+$/.test(employeeCode)) {
+    if (!employeeCode || !username || !password) {
       return NextResponse.json(
-        { success: false, error: 'Employee code is required and must be numeric' },
-        { status: 400 }
-      );
-    }
-    if (!username) {
-      return NextResponse.json({ success: false, error: 'Username is required' }, { status: 400 });
-    }
-    if (!password || password.length < 6) {
-      return NextResponse.json(
-        { success: false, error: 'Password is required (minimum 6 characters)' },
-        { status: 400 }
-      );
-    }
-    if (!defaultShopcode) {
-      return NextResponse.json({ success: false, error: 'Default shop is required' }, { status: 400 });
-    }
-    if (!Number.isFinite(roleCode)) {
-      return NextResponse.json({ success: false, error: 'Role is required' }, { status: 400 });
-    }
-
-    const currentShop =
-      (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || null;
-    if (currentShop && defaultShopcode !== currentShop) {
-      return NextResponse.json(
-        { success: false, error: 'New users must belong to the current shop' },
+        { success: false, error: 'employee_code, username, and password are required' },
         { status: 400 }
       );
     }
 
-    const shopCheck = await dbService.query<{ shop_code: string }>(
-      'SELECT shop_code FROM t_shop WHERE shop_code = ? LIMIT 1',
-      [defaultShopcode]
+    await ensureEmployeeRoleTable();
+    const roles = await listEmployeeRoles();
+    const role = getEmployeeRoleByCode(roleCode);
+    if (!role && !roles.some((r) => r.role_code === roleCode)) {
+      return NextResponse.json({ success: false, error: 'Role not found' }, { status: 400 });
+    }
+
+    const existing = await dbService.query<{ uid: number }>(
+      'SELECT uid FROM t_employee WHERE username = ? OR employee_code = ? LIMIT 1',
+      [username, employeeCode]
     );
-    if (!shopCheck.data?.length) {
-      return NextResponse.json({ success: false, error: 'Invalid shop selected' }, { status: 400 });
-    }
-
-    const codeCheck = await dbService.query<{ uid: number }>(
-      'SELECT uid FROM t_employee WHERE employee_code = ? LIMIT 1',
-      [employeeCode]
-    );
-    if (codeCheck.data?.length) {
+    if (existing.data && existing.data.length > 0) {
       return NextResponse.json(
-        { success: false, error: 'Employee code already exists' },
+        { success: false, error: 'Username or employee code already exists' },
         { status: 409 }
       );
     }
 
-    const usernameCheck = await dbService.query<{ uid: number }>(
-      'SELECT uid FROM t_employee WHERE username = ? AND default_shopcode = ? LIMIT 1',
-      [username, defaultShopcode]
-    );
-    if (usernameCheck.data?.length) {
-      return NextResponse.json(
-        { success: false, error: 'Username already exists for this shop' },
-        { status: 409 }
-      );
-    }
-
-    const hashed = await bcrypt.hash(password, 10);
-    const insertResult = await dbService.query(
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const insert = await dbService.query(
       `INSERT INTO t_employee (employee_code, username, password, default_shopcode, role_code, status, create_date, modify_date)
        VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [employeeCode, username, hashed, defaultShopcode, roleCode, status]
+      [employeeCode, username, hashedPassword, defaultShopcode, roleCode, status]
     );
 
-    const uid = insertResult.insertId;
-    if (!uid) {
-      return NextResponse.json({ success: false, error: 'Failed to create user' }, { status: 500 });
-    }
-
-    await seedEmployeeAccessFromRole(employeeCode, defaultShopcode, roleCode);
+    const permissions = await applyRoleDefaultsToEmployee(employeeCode, defaultShopcode, roleCode);
+    const roleName =
+      role?.role_name ?? roles.find((r) => r.role_code === roleCode)?.role_name ?? String(roleCode);
 
     return NextResponse.json({
       success: true,
-      message: 'User created successfully',
       data: {
-        uid,
+        uid: insert.insertId,
         employee_code: employeeCode,
         username,
         default_shopcode: defaultShopcode,
         role_code: roleCode,
+        role_name: roleName,
         status,
+        permissions,
       },
     });
   } catch (error) {
-    console.error('[API] administration/users POST error:', error);
+    console.error('[API] create user error:', error);
     const msg = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }

@@ -275,6 +275,73 @@ async function isAdministratorRoleInDb(roleCode: number): Promise<boolean> {
   return result.data?.[0]?.role_key === 'administrator';
 }
 
+/** True when this employee currently holds the Administrator role. */
+export async function editorIsAdministrator(
+  employeeCode: string,
+  shopCode: string | null,
+  roleCode?: number | null
+): Promise<boolean> {
+  await ensureEmployeeRoleTable();
+  const liveRoleCode = await getLiveRoleCodeForEmployee(employeeCode, shopCode, roleCode);
+  return isAdministratorRoleInDb(liveRoleCode);
+}
+
+/**
+ * Non-administrators must not assign or modify the Administrator role
+ * (prevents privilege escalation / over-control).
+ */
+export async function canAssignOrModifyRole(options: {
+  editorEmployeeCode: string;
+  editorShopCode: string | null;
+  editorRoleCode?: number | null;
+  targetRoleCode: number;
+  targetCurrentRoleCode?: number | null;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const editorIsAdmin = await editorIsAdministrator(
+    options.editorEmployeeCode,
+    options.editorShopCode,
+    options.editorRoleCode
+  );
+  if (editorIsAdmin) return { ok: true };
+
+  const targetIsAdmin = await isAdministratorRoleInDb(options.targetRoleCode);
+  const currentIsAdmin =
+    options.targetCurrentRoleCode != null &&
+    Number.isFinite(Number(options.targetCurrentRoleCode)) &&
+    (await isAdministratorRoleInDb(Number(options.targetCurrentRoleCode)));
+
+  if (targetIsAdmin || currentIsAdmin) {
+    return {
+      ok: false,
+      error:
+        'Only an Administrator can assign or change the Administrator role. General roles cannot promote users to Administrator.',
+    };
+  }
+  return { ok: true };
+}
+
+/** Drop Administrator from a role list when the editor is not an Administrator. */
+export async function filterRolesForEditor<T extends { role_code: number; role_key?: string | null }>(
+  roles: T[],
+  editorEmployeeCode: string,
+  editorShopCode: string | null,
+  editorRoleCode?: number | null
+): Promise<T[]> {
+  const editorIsAdmin = await editorIsAdministrator(
+    editorEmployeeCode,
+    editorShopCode,
+    editorRoleCode
+  );
+  if (editorIsAdmin) return roles;
+  const filtered: T[] = [];
+  for (const role of roles) {
+    if (role.role_key === 'administrator') continue;
+    if (await isAdministratorRoleInDb(Number(role.role_code))) continue;
+    filtered.push(role);
+  }
+  return filtered;
+}
+
 /** True when the editor may grant/revoke any function access (Administrator role or all permission keys). */
 export async function canManageEmployeeAccess(
   employeeCode: string,

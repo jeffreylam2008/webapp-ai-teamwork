@@ -10,19 +10,34 @@ import React, {
 } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { isAdministratorRoleCode } from '@/config/rolePermissionDefaults';
 
 type PermissionsContextValue = {
   permissions: string[];
   loading: boolean;
   can: (key: string) => boolean;
+  canManageAccess: boolean;
+  isAdministrator: boolean;
+  roleCode: number | null;
   refetch: () => void;
 };
 
 const PermissionsContext = createContext<PermissionsContextValue | undefined>(undefined);
 
+type MeResponse = {
+  success?: boolean;
+  data?: string[];
+  can_manage_access?: boolean;
+  has_full_transaction_access?: boolean;
+  role_code?: number;
+};
+
 export function PermissionsProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [canManageAccess, setCanManageAccess] = useState(false);
+  const [isAdministrator, setIsAdministrator] = useState(false);
+  const [roleCode, setRoleCode] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const can = useCallback(
@@ -30,9 +45,25 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     [permissions]
   );
 
+  const applyMeResult = useCallback((result: MeResponse) => {
+    const list = result?.success && Array.isArray(result.data) ? result.data : [];
+    setPermissions(list);
+    const role = result?.role_code != null ? Number(result.role_code) : null;
+    setRoleCode(Number.isFinite(role as number) ? (role as number) : null);
+    setIsAdministrator(isAdministratorRoleCode(role));
+    setCanManageAccess(
+      Boolean(result?.can_manage_access) ||
+        Boolean(result?.has_full_transaction_access) ||
+        isAdministratorRoleCode(role)
+    );
+  }, []);
+
   const refetch = useCallback(() => {
     if (!token) {
       setPermissions([]);
+      setCanManageAccess(false);
+      setIsAdministrator(false);
+      setRoleCode(null);
       setLoading(false);
       return;
     }
@@ -40,13 +71,15 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     setLoading(true);
     fetchWithAuth('/api/administration/permissions/me', token, { cache: 'no-store' })
       .then((res) => res.json())
-      .then((result) => {
-        const list = result?.success && Array.isArray(result.data) ? result.data : [];
-        setPermissions(list);
+      .then((result: MeResponse) => applyMeResult(result))
+      .catch(() => {
+        setPermissions([]);
+        setCanManageAccess(false);
+        setIsAdministrator(false);
+        setRoleCode(null);
       })
-      .catch(() => setPermissions([]))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [token, applyMeResult]);
 
   useEffect(() => {
     const onPermissionsUpdated = () => refetch();
@@ -57,6 +90,9 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!isAuthenticated || !token) {
       setPermissions([]);
+      setCanManageAccess(false);
+      setIsAdministrator(false);
+      setRoleCode(null);
       setLoading(false);
       return;
     }
@@ -65,13 +101,17 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     setLoading(true);
     fetchWithAuth('/api/administration/permissions/me', token, { cache: 'no-store' })
       .then((res) => res.json())
-      .then((result) => {
+      .then((result: MeResponse) => {
         if (cancelled) return;
-        const list = result?.success && Array.isArray(result.data) ? result.data : [];
-        setPermissions(list);
+        applyMeResult(result);
       })
       .catch(() => {
-        if (!cancelled) setPermissions([]);
+        if (!cancelled) {
+          setPermissions([]);
+          setCanManageAccess(false);
+          setIsAdministrator(false);
+          setRoleCode(null);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -80,11 +120,19 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, applyMeResult]);
 
   const value = useMemo(
-    () => ({ permissions, loading, can, refetch }),
-    [permissions, loading, can, refetch]
+    () => ({
+      permissions,
+      loading,
+      can,
+      canManageAccess,
+      isAdministrator,
+      roleCode,
+      refetch,
+    }),
+    [permissions, loading, can, canManageAccess, isAdministrator, roleCode, refetch]
   );
 
   return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;

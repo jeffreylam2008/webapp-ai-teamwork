@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
-import { ensureEmployeeRoleTable, listEmployeeRoles } from '@/lib/employeeRoleAccess';
+import {
+  ensureEmployeeRoleTable,
+  filterRolesForEditor,
+  listEmployeeRoles,
+} from '@/lib/employeeRoleAccess';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,9 +20,16 @@ export async function GET(request: NextRequest) {
 
     await ensureEmployeeRoleTable();
     const roleRows = await listEmployeeRoles();
-    let roles = roleRows.map((r) => ({
+    const editorCode = String(auth.user.employee_code ?? '').trim();
+    const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || null;
+    const visibleRoles = editorCode
+      ? await filterRolesForEditor(roleRows, editorCode, shopCode, auth.user.role_code)
+      : roleRows;
+
+    let roles = visibleRoles.map((r) => ({
       role_code: Number(r.role_code),
       name: String(r.role_name || r.role_key || r.role_code),
+      role_key: r.role_key,
     }));
 
     if (roles.length === 0) {
@@ -28,6 +39,7 @@ export async function GET(request: NextRequest) {
       roles = (fallback.data || []).map((r) => ({
         role_code: Number(r.role_code),
         name: String(r.role_code),
+        role_key: '',
       }));
     }
 

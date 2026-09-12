@@ -106,6 +106,8 @@ export type AdminPagesTexts = {
     resetDefault: string;
     cardTransactionAccess: string;
     cardTransactionHint: string;
+    grantRequiresFullAccess: string;
+    cannotSelfGrantHint: string;
     colFunction: string;
     colCreate: string;
     colView: string;
@@ -117,6 +119,13 @@ export type AdminPagesTexts = {
     cardPasswordHint: string;
     cardUserInfo: string;
     cardUserInfoHint: string;
+    cardRole: string;
+    cardRoleHint: string;
+    labelRole: string;
+    roleUpdated: string;
+    roleUnknown: string;
+    failedUpdateRole: string;
+    cannotAssignAdministrator: string;
     labelEmployeeCode: string;
     labelUsername: string;
     labelDefaultShop: string;
@@ -495,7 +504,11 @@ const EN: AdminPagesTexts = {
     resetDefault: 'Reset to Default',
     cardTransactionAccess: 'Transaction access',
     cardTransactionHint:
-      'Limited users: only tick the functions and actions they may use. Menu and buttons will show only what they can access.',
+      'Limited users: only tick the functions and actions they may use. Menu and buttons will show only what they can access. Unchecked boxes can only be enabled by an employee with full access.',
+    grantRequiresFullAccess:
+      'Only an employee with full access can grant new permissions. Unchecked boxes stay locked for others.',
+    cannotSelfGrantHint:
+      'You do not have full access, so you cannot enable unchecked boxes. Ask a full-access user to grant rights.',
     colFunction: 'Function',
     colView: 'View',
     colCreate: 'Create',
@@ -508,6 +521,15 @@ const EN: AdminPagesTexts = {
       'Optionally set a new password for this user. Leave blank to keep current password. Use the Save button above to apply.',
     cardUserInfo: 'User information',
     cardUserInfoHint: 'Update the default shop used when this user logs in.',
+    cardRole: 'Employee role',
+    cardRoleHint:
+      'Role sets the default transaction access template. Changing role applies that role’s defaults. Only Administrators can assign the Administrator role.',
+    labelRole: 'Role',
+    roleUpdated: 'Role updated and default permissions applied',
+    roleUnknown: 'Unknown role',
+    failedUpdateRole: 'Failed to update role',
+    cannotAssignAdministrator:
+      'Only an Administrator can assign or change the Administrator role.',
     labelEmployeeCode: 'Employee Code',
     labelUsername: 'Username',
     labelDefaultShop: 'Default Shop',
@@ -888,7 +910,9 @@ const ZH_HANT: AdminPagesTexts = {
     resetDefault: '重設為預設',
     cardTransactionAccess: '交易存取',
     cardTransactionHint:
-      '一般使用者：僅勾選可使用的功能與動作。選單與按鈕僅顯示其有權限者。',
+      '一般使用者：僅勾選可使用的功能與動作。選單與按鈕僅顯示其有權限者。未勾選的項目僅「完整權限」員工可代為開啟。',
+    grantRequiresFullAccess: '僅具完整權限的員工可授予新權限；未勾選的項目對其他人保持鎖定。',
+    cannotSelfGrantHint: '您沒有完整權限，因此無法勾選未開啟的項目。請請具完整權限的員工協助授予。',
     colFunction: '功能',
     colView: '檢視',
     colCreate: '新增',
@@ -901,6 +925,14 @@ const ZH_HANT: AdminPagesTexts = {
       '可選擇為此使用者設定新密碼；留空則維持原密碼。請按上方儲存套用。',
     cardUserInfo: '使用者資料',
     cardUserInfoHint: '更新此使用者登入時使用的預設店舖。',
+    cardRole: '員工角色',
+    cardRoleHint:
+      '角色決定預設交易權限範本；變更角色會套用該角色預設權限。只有管理員可以指派「管理員」角色。',
+    labelRole: '角色',
+    roleUpdated: '角色已更新，並已套用預設權限',
+    roleUnknown: '未知角色',
+    failedUpdateRole: '無法更新角色',
+    cannotAssignAdministrator: '只有管理員可以指派或變更「管理員」角色。',
     labelEmployeeCode: '員工編號',
     labelUsername: '使用者名稱',
     labelDefaultShop: '預設店舖',

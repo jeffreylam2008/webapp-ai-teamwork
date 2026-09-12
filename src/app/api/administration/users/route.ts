@@ -4,6 +4,7 @@ import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import {
   applyRoleDefaultsToEmployee,
+  canAssignOrModifyRole,
   canManageEmployeeAccess,
   ensureEmployeeRoleTable,
   getLiveRoleCodeForEmployee,
@@ -91,12 +92,13 @@ export async function POST(request: NextRequest) {
 
     const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || '';
     const editorCode = String(auth.user.employee_code ?? '').trim();
+    const editorRoleCode = await getLiveRoleCodeForEmployee(
+      editorCode,
+      shopCode || null,
+      auth.user.role_code
+    );
     if (editorCode) {
-      const canCreate = await canManageEmployeeAccess(
-        editorCode,
-        shopCode || null,
-        await getLiveRoleCodeForEmployee(editorCode, shopCode || null, auth.user.role_code)
-      );
+      const canCreate = await canManageEmployeeAccess(editorCode, shopCode || null, editorRoleCode);
       if (!canCreate) {
         return NextResponse.json(
           { success: false, error: 'Only an employee with full access can create users' },
@@ -125,6 +127,16 @@ export async function POST(request: NextRequest) {
     const role = getEmployeeRoleByCode(roleCode);
     if (!role && !roles.some((r) => r.role_code === roleCode)) {
       return NextResponse.json({ success: false, error: 'Role not found' }, { status: 400 });
+    }
+
+    const assignCheck = await canAssignOrModifyRole({
+      editorEmployeeCode: editorCode,
+      editorShopCode: shopCode || null,
+      editorRoleCode,
+      targetRoleCode: roleCode,
+    });
+    if (!assignCheck.ok) {
+      return NextResponse.json({ success: false, error: assignCheck.error }, { status: 403 });
     }
 
     const existing = await dbService.query<{ uid: number }>(

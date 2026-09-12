@@ -9,22 +9,32 @@ import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { ArrowLeftOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
-import { App, Button, Card, Checkbox, Form, Input, Select, Spin, Table } from 'antd';
+import { App, Alert, Button, Card, Checkbox, Form, Input, Select, Spin, Table } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { TRANSACTION_PERMISSIONS, FUNCTION_PERMISSION_ROWS, isViewOnlyPermissionRow } from '@/config/transactionPermissions';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { isAdministratorRoleCode } from '@/config/rolePermissionDefaults';
+
 interface AdminUser {
   uid: number;
   employee_code: string;
   username: string;
   default_shopcode: string;
   role_code: number;
+  role_name?: string | null;
   status: number;
 }
 
 interface FormOptions {
   shops: Array<{ shop_code: string; name: string }>;
+}
+
+interface EmployeeRoleOption {
+  role_code: number;
+  role_key: string;
+  role_name: string;
 }
 
 function UserDetailPageContent() {
@@ -36,6 +46,11 @@ function UserDetailPageContent() {
   const ud = useMemo(() => getAdminPagesTexts(lang).userDetail, [lang]);
   const ul = useMemo(() => getAdminPagesTexts(lang).usersList, [lang]);
   const { token, user: currentUser } = useAuth();
+  const {
+    canManageAccess: editorHasFullAccess,
+    isAdministrator: editorIsAdministrator,
+    loading: editorPermissionsLoading,
+  } = usePermissions();
   const { message: messageApi } = App.useApp();
   const employeeCode = params?.employee_code as string;
   const [user, setUser] = useState<AdminUser | null>(null);
@@ -44,12 +59,71 @@ function UserDetailPageContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [roles, setRoles] = useState<EmployeeRoleOption[]>([]);
+  const [updatingRole, setUpdatingRole] = useState(false);
   const [shopOptions, setShopOptions] = useState<Array<{ value: string; label: string }>>([]);
   const [form] = Form.useForm();
   const [userInfoForm] = Form.useForm();
   const [passwordForm] = Form.useForm();
 
+  /** Unchecked (not currently granted) boxes can only be enabled by full-access editors. */
+  const canEnablePermissionKey = (key: string) =>
+    editorHasFullAccess || permissions.includes(key);
+
   const goBackToUsers = useBackNavigation(() => router.push('/administration/users'));
+
+  const applyPermissionKeysToForm = (keys: string[]) => {
+    const initial: Record<string, boolean> = {};
+    TRANSACTION_PERMISSIONS.forEach((p) => {
+      initial[p.key] = keys.includes(p.key);
+    });
+    setPermissions(keys);
+    setPermissionFieldValues(initial);
+    form.setFieldsValue(initial);
+  };
+
+  const roleSelectOptions = useMemo(() => {
+    const options = roles.map((role) => ({
+      value: role.role_code,
+      label: role.role_name || role.role_key || String(role.role_code),
+    }));
+    // Keep current role visible even if filtered out for non-admins (read-only display).
+    if (
+      user &&
+      !options.some((o) => o.value === user.role_code) &&
+      isAdministratorRoleCode(user.role_code)
+    ) {
+      options.unshift({
+        value: user.role_code,
+        label: user.role_name || 'Administrator',
+      });
+    }
+    return options;
+  }, [roles, user]);
+
+  const canEditRole =
+    editorHasFullAccess &&
+    (editorIsAdministrator || !isAdministratorRoleCode(user?.role_code));
+
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const res = await fetchWithAuth('/api/administration/roles', token, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const json = await res.json();
+        if (!controller.signal.aborted && json.success && Array.isArray(json.data)) {
+          setRoles(json.data as EmployeeRoleOption[]);
+        }
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return;
+      }
+    })();
+    return () => controller.abort();
+  }, [token]);
 
   useEffect(() => {
     if (!employeeCode || !token) return;
@@ -105,13 +179,14 @@ function UserDetailPageContent() {
         const permJson = await permRes.json();
         if (controller.signal.aborted) return;
         if (permJson.success && Array.isArray(permJson.data)) {
-          setPermissions(permJson.data);
+          applyPermissionKeysToForm(permJson.data);
+        } else {
+          const initial: Record<string, boolean> = {};
+          TRANSACTION_PERMISSIONS.forEach((p) => {
+            initial[p.key] = false;
+          });
+          setPermissionFieldValues(initial);
         }
-        const initial: Record<string, boolean> = {};
-        TRANSACTION_PERMISSIONS.forEach((p) => {
-          initial[p.key] = permJson.success && permJson.data.includes(p.key);
-        });
-        setPermissionFieldValues(initial);
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return;
         messageApi.error(ud.failedLoadUser);
@@ -132,6 +207,15 @@ function UserDetailPageContent() {
     }
     const permValues = form.getFieldsValue(true) as Record<string, boolean>;
     const selected = TRANSACTION_PERMISSIONS.filter((p) => permValues[p.key]).map((p) => p.key);
+
+    if (!editorHasFullAccess) {
+      const unauthorized = selected.filter((key) => !permissions.includes(key));
+      if (unauthorized.length > 0) {
+        messageApi.error(ud.grantRequiresFullAccess);
+        return;
+      }
+    }
+
     const pwdValues = passwordForm.getFieldsValue(true) as { new_password?: string; confirm_password?: string };
     const newPwd = (pwdValues.new_password ?? '').trim();
     const confirmPwd = (pwdValues.confirm_password ?? '').trim();
@@ -234,6 +318,10 @@ function UserDetailPageContent() {
 
   const handleResetToDefault = async () => {
     if (!user || !token) return;
+    if (!editorHasFullAccess) {
+      messageApi.error(ud.grantRequiresFullAccess);
+      return;
+    }
     setResetting(true);
     try {
       const res = await fetch(
@@ -250,13 +338,7 @@ function UserDetailPageContent() {
         return;
       }
       const keys = Array.isArray(result.data) ? result.data : [];
-      setPermissions(keys);
-      const initial: Record<string, boolean> = {};
-      TRANSACTION_PERMISSIONS.forEach((p) => {
-        initial[p.key] = keys.includes(p.key);
-      });
-      setPermissionFieldValues(initial);
-      form.setFieldsValue(initial);
+      applyPermissionKeysToForm(keys);
       messageApi.success(ud.resetOk);
 
       const currentCode = currentUser?.employee_code != null ? String(currentUser.employee_code) : '';
@@ -267,6 +349,58 @@ function UserDetailPageContent() {
       messageApi.error(ud.failedReset);
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleRoleChange = async (newRoleCode: number) => {
+    if (!user || !token) return;
+    if (!editorHasFullAccess) {
+      messageApi.error(ud.grantRequiresFullAccess);
+      return;
+    }
+    if (!editorIsAdministrator && isAdministratorRoleCode(newRoleCode)) {
+      messageApi.error(ud.cannotAssignAdministrator);
+      return;
+    }
+    if (!editorIsAdministrator && isAdministratorRoleCode(user.role_code)) {
+      messageApi.error(ud.cannotAssignAdministrator);
+      return;
+    }
+    if (newRoleCode === user.role_code) return;
+
+    setUpdatingRole(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/administration/users/${encodeURIComponent(user.employee_code)}`,
+        token,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role_code: newRoleCode, apply_role_defaults: true }),
+        }
+      );
+      const result = await res.json();
+      if (!result.success) {
+        messageApi.error(result.error || ud.failedUpdateRole);
+        return;
+      }
+      const roleName =
+        result.data?.role_name ??
+        roles.find((r) => r.role_code === newRoleCode)?.role_name ??
+        ud.roleUnknown;
+      setUser({ ...user, role_code: newRoleCode, role_name: roleName });
+      if (Array.isArray(result.data?.permissions)) {
+        applyPermissionKeysToForm(result.data.permissions);
+      }
+      messageApi.success(ud.roleUpdated);
+      const currentCode = currentUser?.employee_code != null ? String(currentUser.employee_code) : '';
+      if (currentCode && String(user.employee_code) === currentCode && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('permissions-updated'));
+      }
+    } catch {
+      messageApi.error(ud.failedUpdateRole);
+    } finally {
+      setUpdatingRole(false);
     }
   };
 
@@ -370,13 +504,20 @@ function UserDetailPageContent() {
             type="primary"
             icon={<SaveOutlined />}
             loading={saving}
+            disabled={editorPermissionsLoading || updatingRole}
             onClick={handleSave}
           >
             {saveWithShortcutLabel(lang)}
           </Button>
           <Button
             type="default"
+            disabled={!editorHasFullAccess || editorPermissionsLoading}
+            title={!editorHasFullAccess ? ud.grantRequiresFullAccess : undefined}
             onClick={() => {
+              if (!editorHasFullAccess) {
+                messageApi.error(ud.grantRequiresFullAccess);
+                return;
+              }
               const full: Record<string, boolean> = {};
               FUNCTION_PERMISSION_ROWS.forEach((r) => {
                 if (isViewOnlyPermissionRow(r)) {
@@ -400,13 +541,15 @@ function UserDetailPageContent() {
             type="default"
             danger
             loading={resetting}
+            disabled={!editorHasFullAccess || editorPermissionsLoading || updatingRole}
+            title={!editorHasFullAccess ? ud.grantRequiresFullAccess : undefined}
             onClick={handleResetToDefault}
           >
             {ud.resetDefault}
           </Button>
         </div>
       }
-      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || resetting }}
+      actionBarSaveShortcut={{ onSave: handleSave, disabled: saving || resetting || updatingRole }}
     >
       <div className="px-8 py-6 bg-white">
         <Card title={ud.cardUserInfo} size="small" className="max-w-3xl mb-6">
@@ -433,14 +576,33 @@ function UserDetailPageContent() {
           </Form>
         </Card>
 
-        <Card
-          title={ud.cardTransactionAccess}
-          size="small"
-          className="max-w-3xl"
-        >
-          <p className="text-neutral-500 text-sm mb-3">
-            {ud.cardTransactionHint}
-          </p>
+        <Card title={ud.cardRole} size="small" className="max-w-3xl mb-6">
+          <p className="text-neutral-500 text-sm mb-3">{ud.cardRoleHint}</p>
+          {!editorIsAdministrator ? (
+            <p className="text-amber-700 text-sm mb-3">{ud.cannotAssignAdministrator}</p>
+          ) : null}
+          <div className="max-w-sm">
+            <label className="block text-sm font-medium mb-1" htmlFor="employee-role-select">
+              {ud.labelRole}
+            </label>
+            <Select
+              id="employee-role-select"
+              className="w-full"
+              value={user.role_code}
+              loading={updatingRole || editorPermissionsLoading}
+              disabled={!canEditRole || editorPermissionsLoading || updatingRole}
+              options={roleSelectOptions}
+              onChange={handleRoleChange}
+              placeholder={user.role_name || ud.roleUnknown}
+            />
+          </div>
+        </Card>
+
+        <Card title={ud.cardTransactionAccess} size="small" className="max-w-3xl">
+          <p className="text-neutral-500 text-sm mb-3">{ud.cardTransactionHint}</p>
+          {!editorHasFullAccess && !editorPermissionsLoading ? (
+            <Alert type="info" showIcon className="mb-3" message={ud.cannotSelfGrantHint} />
+          ) : null}
           <Form
             form={form}
             layout="vertical"
@@ -465,7 +627,13 @@ function UserDetailPageContent() {
                         type="link"
                         size="small"
                         className="p-0 h-auto text-xs"
+                        disabled={!editorHasFullAccess}
+                        title={!editorHasFullAccess ? ud.grantRequiresFullAccess : undefined}
                         onClick={() => {
+                          if (!editorHasFullAccess) {
+                            messageApi.error(ud.grantRequiresFullAccess);
+                            return;
+                          }
                           if (isViewOnlyPermissionRow(row)) {
                             form.setFieldsValue({
                               [row.view]: true,
@@ -510,7 +678,7 @@ function UserDetailPageContent() {
                   align: 'center',
                   render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) => (
                     <Form.Item name={row.view} valuePropName="checked" noStyle>
-                      <Checkbox />
+                      <Checkbox disabled={!canEnablePermissionKey(row.view)} />
                     </Form.Item>
                   ),
                 },
@@ -524,7 +692,7 @@ function UserDetailPageContent() {
                       <span className="text-neutral-400">—</span>
                     ) : (
                       <Form.Item name={row.create} valuePropName="checked" noStyle>
-                        <Checkbox />
+                        <Checkbox disabled={!canEnablePermissionKey(row.create)} />
                       </Form.Item>
                     ),
                 },
@@ -538,7 +706,7 @@ function UserDetailPageContent() {
                       <span className="text-neutral-400">—</span>
                     ) : (
                       <Form.Item name={row.edit} valuePropName="checked" noStyle>
-                        <Checkbox />
+                        <Checkbox disabled={!canEnablePermissionKey(row.edit)} />
                       </Form.Item>
                     ),
                 },
@@ -552,7 +720,7 @@ function UserDetailPageContent() {
                       <span className="text-neutral-400">—</span>
                     ) : (
                       <Form.Item name={row.delete} valuePropName="checked" noStyle>
-                        <Checkbox />
+                        <Checkbox disabled={!canEnablePermissionKey(row.delete)} />
                       </Form.Item>
                     ),
                 },
@@ -562,9 +730,7 @@ function UserDetailPageContent() {
         </Card>
 
         <Card title={ud.cardPassword} size="small" className="max-w-3xl mt-6">
-          <p className="text-neutral-500 text-sm mb-3">
-            {ud.cardPasswordHint}
-          </p>
+          <p className="text-neutral-500 text-sm mb-3">{ud.cardPasswordHint}</p>
           <Form form={passwordForm} layout="vertical" style={{ maxWidth: 400 }}>
             <Form.Item name="new_password" label={ud.labelNewPassword}>
               <Input.Password placeholder={ud.phNewPassword} autoComplete="new-password" />

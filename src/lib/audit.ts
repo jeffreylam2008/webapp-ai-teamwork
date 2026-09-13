@@ -94,3 +94,47 @@ export async function logPrefixAction(params: {
   });
 }
 
+/**
+ * Audit employee password changes via administration API.
+ * Never include the password (plaintext or hash) in details.
+ */
+export async function logEmployeePasswordAction(params: {
+  request: NextRequest;
+  targetEmployeeCode: string;
+  targetUid?: number | null;
+  outcome: 'success' | 'denied' | 'not_found' | 'error';
+  details?: Record<string, unknown>;
+  statusCode?: number;
+}) {
+  const { request, targetEmployeeCode, targetUid, outcome, details, statusCode } = params;
+  const user = await getAuditUser(request);
+  const headerCtx = getUserFromRequest(request);
+  const userId = user ? String(user.uid) : headerCtx.userId || 'anonymous';
+  const username = user ? user.username : headerCtx.username || 'anonymous';
+  const editorEmployeeCode = user?.employee_code != null ? String(user.employee_code) : undefined;
+  const isSelfChange =
+    editorEmployeeCode != null &&
+    String(editorEmployeeCode).trim() === String(targetEmployeeCode).trim();
+
+  userActionLogger.log({
+    userId,
+    username,
+    action: 'PASSWORD_CHANGE',
+    resource: 'EMPLOYEE',
+    resourceId: targetEmployeeCode,
+    details: {
+      target_employee_code: targetEmployeeCode,
+      target_uid: targetUid ?? undefined,
+      editor_employee_code: editorEmployeeCode,
+      self_change: isSelfChange,
+      outcome,
+      ...details,
+    },
+    ipAddress: getRequestIp(request) ?? headerCtx.ipAddress,
+    userAgent: getRequestUserAgent(request) ?? headerCtx.userAgent,
+    method: request.method,
+    path: new URL(request.url).pathname,
+    statusCode,
+  });
+}
+

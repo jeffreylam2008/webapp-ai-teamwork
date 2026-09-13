@@ -47,6 +47,11 @@ class SimpleLogger {
     this.writeLog('user-actions', 'info', message, meta);
   }
 
+  /** System-level info (startup, pools, config) — not user actions. */
+  systemInfo(message: string, meta?: LogMeta) {
+    this.writeLog('system', 'info', message, meta);
+  }
+
   error(message: string, error?: Error, meta?: LogMeta) {
     this.writeLog('errors', 'error', message, { 
       error: error?.message, 
@@ -211,7 +216,7 @@ export const userActionLogger = {
 // System event logger
 export const systemLogger = {
   info: (message: string, meta?: LogMeta) => {
-    simpleLogger.info(message, { type: 'SYSTEM', ...meta });
+    simpleLogger.systemInfo(message, { type: 'SYSTEM', ...meta });
   },
   
   warn: (message: string, meta?: LogMeta) => {

@@ -7,6 +7,7 @@ import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
@@ -40,6 +41,7 @@ function AddUserPageContent() {
   const a = useMemo(() => getAdminPagesTexts(lang).usersList, [lang]);
   const ua = useMemo(() => getAdminPagesTexts(lang).userAdd, [lang]);
   const { token } = useAuth();
+  const { isAdministrator, loading: permissionsLoading } = usePermissions();
   const [form] = Form.useForm<CreateUserFormValues>();
   const [loading, setLoading] = useState(false);
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -51,7 +53,15 @@ function AddUserPageContent() {
   const goBackToUsers = useBackNavigation(() => router.push('/administration/users'));
 
   useEffect(() => {
-    if (!token) return;
+    if (permissionsLoading) return;
+    if (!isAdministrator) {
+      setPageMessage({ type: 'error', text: ua.onlyAdministratorCanAdd });
+      setOptionsLoading(false);
+    }
+  }, [permissionsLoading, isAdministrator, ua.onlyAdministratorCanAdd]);
+
+  useEffect(() => {
+    if (!token || !isAdministrator || permissionsLoading) return;
     const controller = new AbortController();
     (async () => {
       setOptionsLoading(true);
@@ -81,7 +91,7 @@ function AddUserPageContent() {
       }
     })();
     return () => controller.abort();
-  }, [token, form, ua.failedLoadOptions]);
+  }, [token, isAdministrator, permissionsLoading, form, ua.failedLoadOptions]);
 
   useEffect(() => {
     if (!pageMessage) return;
@@ -114,6 +124,10 @@ function AddUserPageContent() {
 
   const handleSubmit = async (values: CreateUserFormValues) => {
     if (!token) return;
+    if (!isAdministrator) {
+      setPageMessage({ type: 'error', text: ua.onlyAdministratorCanAdd });
+      return;
+    }
     setLoading(true);
     setPageMessage(null);
     try {
@@ -160,7 +174,7 @@ function AddUserPageContent() {
         type="primary"
         icon={<SaveOutlined />}
         loading={loading}
-        disabled={optionsLoading || !options}
+        disabled={optionsLoading || !options || !isAdministrator || permissionsLoading}
         onClick={() => form.submit()}
       >
         {saveWithShortcutLabel(lang)}
@@ -209,7 +223,7 @@ function AddUserPageContent() {
               form={form}
               layout="vertical"
               onFinish={handleSubmit}
-              disabled={optionsLoading || !options}
+              disabled={optionsLoading || !options || !isAdministrator}
               initialValues={{ status: 1 }}
             >
               <Row gutter={24}>

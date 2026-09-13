@@ -5,7 +5,7 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import {
   applyRoleDefaultsToEmployee,
   canAssignOrModifyRole,
-  canManageEmployeeAccess,
+  canCreateEmployee,
   ensureEmployeeRoleTable,
   getLiveRoleCodeForEmployee,
   listEmployeeRoles,
@@ -98,12 +98,9 @@ export async function POST(request: NextRequest) {
       auth.user.role_code
     );
     if (editorCode) {
-      const canCreate = await canManageEmployeeAccess(editorCode, shopCode || null, editorRoleCode);
-      if (!canCreate) {
-        return NextResponse.json(
-          { success: false, error: 'Only an employee with full access can create users' },
-          { status: 403 }
-        );
+      const createCheck = await canCreateEmployee(editorCode, shopCode || null, editorRoleCode);
+      if (!createCheck.ok) {
+        return NextResponse.json({ success: false, error: createCheck.error }, { status: 403 });
       }
     }
 

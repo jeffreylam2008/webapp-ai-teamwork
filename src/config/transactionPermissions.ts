@@ -35,6 +35,15 @@ export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
     delete: 'void_sales_report',
     viewOnly: true,
   },
+  {
+    id: 'warehouse_report',
+    label: 'Warehouse Report',
+    create: 'create_warehouse_report',
+    view: 'view_warehouse_report',
+    edit: 'edit_warehouse_report',
+    delete: 'void_warehouse_report',
+    viewOnly: true,
+  },
 ];
 
 export function isViewOnlyPermissionRow(row: FunctionPermissionRow): boolean {
@@ -153,4 +162,5 @@ export const MENU_PATH_VIEW_PERMISSION: Record<string, string> = {
   '/sales/orders': 'view_sales_order',
   '/sales/quotations': 'view_quotation',
   '/reports/sales': 'view_sales_report',
+  '/reports/warehouse': 'view_warehouse_report',
 };

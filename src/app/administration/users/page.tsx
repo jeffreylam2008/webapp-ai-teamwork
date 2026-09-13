@@ -11,6 +11,7 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Table, Button, message, Tag, Spin, Space } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 
 interface AdminUser {
@@ -19,6 +20,8 @@ interface AdminUser {
   username: string;
   default_shopcode: string;
   role_code: number;
+  role_key?: string | null;
+  role_name?: string | null;
   status: number;
 }
 
@@ -30,6 +33,7 @@ export default function AdministrationUsersPage() {
   const hub = getHubPagesTexts(lang).administrationHub;
   const a = getAdminPagesTexts(lang).usersList;
   const { token } = useAuth();
+  const { isAdministrator, loading: permissionsLoading } = usePermissions();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,8 +76,12 @@ export default function AdministrationUsersPage() {
   }, []);
 
   const handleAddUser = useCallback(() => {
+    if (!isAdministrator) {
+      message.error(a.onlyAdministratorCanAdd);
+      return;
+    }
     router.push('/administration/users/add');
-  }, [router]);
+  }, [router, isAdministrator, a.onlyAdministratorCanAdd]);
 
   const columns = useMemo(
     () => [
@@ -121,12 +129,23 @@ export default function AdministrationUsersPage() {
       },
       {
         title: a.colRole,
-        dataIndex: 'role_code',
-        key: 'role_code',
-        sorter: (x: AdminUser, y: AdminUser) => x.role_code - y.role_code,
-        width: 100,
-        render: (code: number) =>
-          code === 1 ? <Tag color="blue">{a.roleSupervisor}</Tag> : <Tag>{a.roleUser}</Tag>,
+        dataIndex: 'role_name',
+        key: 'role_name',
+        sorter: (x: AdminUser, y: AdminUser) =>
+          (x.role_name ?? '').localeCompare(y.role_name ?? ''),
+        width: 160,
+        render: (_: string | null | undefined, record: AdminUser) => {
+          const name = record.role_name?.trim();
+          if (name) {
+            const color =
+              record.role_code === 1 ? 'blue' : record.role_code === 2 ? 'green' : 'orange';
+            return <Tag color={color}>{name}</Tag>;
+          }
+          if (record.role_code === 1) {
+            return <Tag color="blue">{a.roleSupervisor}</Tag>;
+          }
+          return <Tag>{a.roleUser}</Tag>;
+        },
       },
       {
         title: a.colStatus,
@@ -144,14 +163,17 @@ export default function AdministrationUsersPage() {
   const UsersButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4">
       <Space wrap>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          title={a.actionAddUser}
-          onClick={handleAddUser}
-        >
-          {a.add}
-        </Button>
+        {isAdministrator ? (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            title={a.actionAddUser}
+            onClick={handleAddUser}
+            disabled={permissionsLoading}
+          >
+            {a.add}
+          </Button>
+        ) : null}
         <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
           {a.refresh}
         </Button>

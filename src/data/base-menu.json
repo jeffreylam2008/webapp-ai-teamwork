@@ -67,7 +67,8 @@
     "icon": "BarChartOutlined",
     "order": 6.5,
     "submenu": [
-      { "key": "sales-report", "label": "Sales Report", "href": "/reports/sales" }
+      { "key": "sales-report", "label": "Sales Report", "href": "/reports/sales" },
+      { "key": "warehouse-report", "label": "Warehouse Report", "href": "/reports/warehouse" }
     ]
   },
   {

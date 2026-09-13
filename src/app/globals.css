@@ -663,6 +663,12 @@ a {
   background-color: #ffffff !important;
 }
 
+/* Keep table text dark on light row backgrounds (OS dark-scheme --foreground is light) */
+.ant-table-thead > tr > th.ant-table-cell,
+.ant-table-tbody > tr > td.ant-table-cell {
+  color: #171717 !important;
+}
+
 /* Maximize table width to inner page edge: minimal horizontal padding when container has a table */
 .px-8:has(.ant-table),
 div[class*='px-8']:has(.ant-table) {

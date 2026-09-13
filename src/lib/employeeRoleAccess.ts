@@ -320,6 +320,37 @@ export async function canAssignOrModifyRole(options: {
   return { ok: true };
 }
 
+/**
+ * Administrators may set any employee password (including their own).
+ * General roles may only change their own password.
+ */
+export async function canChangeEmployeePassword(options: {
+  editorEmployeeCode: string;
+  editorShopCode: string | null;
+  editorRoleCode?: number | null;
+  targetEmployeeCode: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const editorCode = String(options.editorEmployeeCode || '').trim();
+  const targetCode = String(options.targetEmployeeCode || '').trim();
+  if (!editorCode || !targetCode) {
+    return { ok: false, error: 'Unauthorized' };
+  }
+  if (editorCode === targetCode) return { ok: true };
+
+  const editorIsAdmin = await editorIsAdministrator(
+    editorCode,
+    options.editorShopCode,
+    options.editorRoleCode
+  );
+  if (editorIsAdmin) return { ok: true };
+
+  return {
+    ok: false,
+    error:
+      'Only an Administrator can change another employee’s password. General roles may only change their own password.',
+  };
+}
+
 /** Drop Administrator from a role list when the editor is not an Administrator. */
 export async function filterRolesForEditor<T extends { role_code: number; role_key?: string | null }>(
   roles: T[],
@@ -340,6 +371,22 @@ export async function filterRolesForEditor<T extends { role_code: number; role_k
     filtered.push(role);
   }
   return filtered;
+}
+
+/**
+ * Only Administrators (system owners) may create new employees.
+ */
+export async function canCreateEmployee(
+  employeeCode: string,
+  shopCode: string | null,
+  roleCode?: number | null
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const editorIsAdmin = await editorIsAdministrator(employeeCode, shopCode, roleCode);
+  if (editorIsAdmin) return { ok: true };
+  return {
+    ok: false,
+    error: 'Only an Administrator can add employees.',
+  };
 }
 
 /** True when the editor may grant/revoke any function access (Administrator role or all permission keys). */

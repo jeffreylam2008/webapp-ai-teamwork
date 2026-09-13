@@ -30,6 +30,7 @@ const ZH_HANT: Record<MenuKey, string> = {
 
   reports: '報表',
   'sales-report': '銷售報表',
+  'warehouse-report': '倉庫報表',
 
   administration: '系統管理',
   users: '用戶',

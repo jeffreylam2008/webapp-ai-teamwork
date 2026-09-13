@@ -26,6 +26,7 @@ export type AdminPagesTexts = {
     loading: string;
     empty: string;
     add: string;
+    onlyAdministratorCanAdd: string;
   };
   userAdd: {
     title: string;
@@ -34,6 +35,7 @@ export type AdminPagesTexts = {
     backToUsers: string;
     created: string;
     failedCreate: string;
+    onlyAdministratorCanAdd: string;
     passwordMismatch: string;
     labelEmployeeCode: string;
     labelUsername: string;
@@ -117,6 +119,8 @@ export type AdminPagesTexts = {
     linkNone: string;
     cardPassword: string;
     cardPasswordHint: string;
+    cardPasswordOwnOnlyHint: string;
+    cannotChangeOthersPassword: string;
     cardUserInfo: string;
     cardUserInfoHint: string;
     cardRole: string;
@@ -421,6 +425,7 @@ const EN: AdminPagesTexts = {
     loading: 'Loading users...',
     empty: 'No users found.',
     add: 'Add User',
+    onlyAdministratorCanAdd: 'Only an Administrator can add employees.',
   },
   userAdd: {
     title: 'Add User',
@@ -429,6 +434,7 @@ const EN: AdminPagesTexts = {
     backToUsers: 'Back to Users',
     created: 'User created successfully',
     failedCreate: 'Failed to create user',
+    onlyAdministratorCanAdd: 'Only an Administrator can add employees.',
     passwordMismatch: 'Passwords do not match',
     labelEmployeeCode: 'Employee Code',
     labelUsername: 'Username',
@@ -518,7 +524,11 @@ const EN: AdminPagesTexts = {
     linkNone: 'None',
     cardPassword: 'Change password',
     cardPasswordHint:
-      'Optionally set a new password for this user. Leave blank to keep current password. Use the Save button above to apply.',
+      'Optionally set a new password for this user. Leave blank to keep current password. Use the Save button above to apply. Only Administrators can change another employee’s password; other roles may only change their own.',
+    cardPasswordOwnOnlyHint:
+      'You can only change your own password here. Ask an Administrator to reset another employee’s password.',
+    cannotChangeOthersPassword:
+      'Only an Administrator can change another employee’s password. You may only change your own password.',
     cardUserInfo: 'User information',
     cardUserInfoHint: 'Update the default shop used when this user logs in.',
     cardRole: 'Employee role',
@@ -827,6 +837,7 @@ const ZH_HANT: AdminPagesTexts = {
     loading: '載入使用者中...',
     empty: '找不到使用者。',
     add: '新增使用者',
+    onlyAdministratorCanAdd: '只有管理員可以新增員工。',
   },
   userAdd: {
     title: '新增使用者',
@@ -835,6 +846,7 @@ const ZH_HANT: AdminPagesTexts = {
     backToUsers: '返回使用者列表',
     created: '使用者已成功建立',
     failedCreate: '無法建立使用者',
+    onlyAdministratorCanAdd: '只有管理員可以新增員工。',
     passwordMismatch: '密碼不一致',
     labelEmployeeCode: '員工編號',
     labelUsername: '使用者名稱',
@@ -922,7 +934,9 @@ const ZH_HANT: AdminPagesTexts = {
     linkNone: '全不選',
     cardPassword: '變更密碼',
     cardPasswordHint:
-      '可選擇為此使用者設定新密碼；留空則維持原密碼。請按上方儲存套用。',
+      '可選擇為此使用者設定新密碼；留空則維持原密碼。請按上方儲存套用。只有管理員可變更其他員工的密碼；其他角色僅可變更自己的密碼。',
+    cardPasswordOwnOnlyHint: '此處僅可變更自己的密碼。如需重設其他員工密碼，請聯絡管理員。',
+    cannotChangeOthersPassword: '只有管理員可變更其他員工的密碼；您僅可變更自己的密碼。',
     cardUserInfo: '使用者資料',
     cardUserInfoHint: '更新此使用者登入時使用的預設店舖。',
     cardRole: '員工角色',

@@ -105,6 +105,14 @@ function UserDetailPageContent() {
     editorHasFullAccess &&
     (editorIsAdministrator || !isAdministratorRoleCode(user?.role_code));
 
+  const viewingOwnAccount =
+    currentUser?.employee_code != null &&
+    user != null &&
+    String(currentUser.employee_code) === String(user.employee_code);
+
+  /** Administrators may change any password; others only their own. */
+  const canChangePassword = editorIsAdministrator || viewingOwnAccount;
+
   useEffect(() => {
     if (!token) return;
     const controller = new AbortController();
@@ -223,6 +231,10 @@ function UserDetailPageContent() {
     const shopChanged = nextDefaultShop !== String(user.default_shopcode || '').trim();
 
     if (newPwd !== '' || confirmPwd !== '') {
+      if (!canChangePassword) {
+        messageApi.error(ud.cannotChangeOthersPassword);
+        return;
+      }
       if (newPwd !== confirmPwd) {
         messageApi.error(ud.passwordMismatch);
         return;
@@ -493,13 +505,16 @@ function UserDetailPageContent() {
           <Button icon={<ArrowLeftOutlined />} onClick={goBackToUsers}>
             {ud.backToUsers}
           </Button>
-          <Button
-            icon={<PlusOutlined />}
-            title={ul.actionAddUser}
-            onClick={() => router.push('/administration/users/add')}
-          >
-            {ul.add}
-          </Button>
+          {editorIsAdministrator ? (
+            <Button
+              icon={<PlusOutlined />}
+              title={ul.actionAddUser}
+              onClick={() => router.push('/administration/users/add')}
+              disabled={editorPermissionsLoading}
+            >
+              {ul.add}
+            </Button>
+          ) : null}
           <Button
             type="primary"
             icon={<SaveOutlined />}
@@ -553,13 +568,21 @@ function UserDetailPageContent() {
     >
       <div className="px-8 py-6 bg-white">
         <Card title={ud.cardUserInfo} size="small" className="max-w-3xl mb-6">
-          <p className="text-neutral-500 text-sm mb-3">{ud.cardUserInfoHint}</p>
+          <p className="text-neutral-800 text-sm mb-3">{ud.cardUserInfoHint}</p>
           <Form form={userInfoForm} layout="vertical" style={{ maxWidth: 480 }}>
             <Form.Item label={ud.labelEmployeeCode}>
-              <Input value={user.employee_code} disabled />
+              <Input
+                value={user.employee_code}
+                readOnly
+                className="!text-neutral-900 !bg-neutral-50 cursor-default"
+              />
             </Form.Item>
             <Form.Item label={ud.labelUsername}>
-              <Input value={user.username} disabled />
+              <Input
+                value={user.username}
+                readOnly
+                className="!text-neutral-900 !bg-neutral-50 cursor-default"
+              />
             </Form.Item>
             <Form.Item
               label={ud.labelDefaultShop}
@@ -577,7 +600,7 @@ function UserDetailPageContent() {
         </Card>
 
         <Card title={ud.cardRole} size="small" className="max-w-3xl mb-6">
-          <p className="text-neutral-500 text-sm mb-3">{ud.cardRoleHint}</p>
+          <p className="text-neutral-800 text-sm mb-3">{ud.cardRoleHint}</p>
           {!editorIsAdministrator ? (
             <p className="text-amber-700 text-sm mb-3">{ud.cannotAssignAdministrator}</p>
           ) : null}
@@ -599,7 +622,7 @@ function UserDetailPageContent() {
         </Card>
 
         <Card title={ud.cardTransactionAccess} size="small" className="max-w-3xl">
-          <p className="text-neutral-500 text-sm mb-3">{ud.cardTransactionHint}</p>
+          <p className="text-neutral-800 text-sm mb-3">{ud.cardTransactionHint}</p>
           {!editorHasFullAccess && !editorPermissionsLoading ? (
             <Alert type="info" showIcon className="mb-3" message={ud.cannotSelfGrantHint} />
           ) : null}
@@ -689,7 +712,7 @@ function UserDetailPageContent() {
                   align: 'center',
                   render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
                     isViewOnlyPermissionRow(row) ? (
-                      <span className="text-neutral-400">—</span>
+                      <span className="text-neutral-600">—</span>
                     ) : (
                       <Form.Item name={row.create} valuePropName="checked" noStyle>
                         <Checkbox disabled={!canEnablePermissionKey(row.create)} />
@@ -703,7 +726,7 @@ function UserDetailPageContent() {
                   align: 'center',
                   render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
                     isViewOnlyPermissionRow(row) ? (
-                      <span className="text-neutral-400">—</span>
+                      <span className="text-neutral-600">—</span>
                     ) : (
                       <Form.Item name={row.edit} valuePropName="checked" noStyle>
                         <Checkbox disabled={!canEnablePermissionKey(row.edit)} />
@@ -717,7 +740,7 @@ function UserDetailPageContent() {
                   align: 'center',
                   render: (_: unknown, row: (typeof FUNCTION_PERMISSION_ROWS)[number]) =>
                     isViewOnlyPermissionRow(row) ? (
-                      <span className="text-neutral-400">—</span>
+                      <span className="text-neutral-600">—</span>
                     ) : (
                       <Form.Item name={row.delete} valuePropName="checked" noStyle>
                         <Checkbox disabled={!canEnablePermissionKey(row.delete)} />
@@ -730,10 +753,19 @@ function UserDetailPageContent() {
         </Card>
 
         <Card title={ud.cardPassword} size="small" className="max-w-3xl mt-6">
-          <p className="text-neutral-500 text-sm mb-3">{ud.cardPasswordHint}</p>
+          <p className="text-neutral-800 text-sm mb-3">
+            {canChangePassword ? ud.cardPasswordHint : ud.cardPasswordOwnOnlyHint}
+          </p>
+          {!canChangePassword ? (
+            <Alert type="info" showIcon className="mb-3" message={ud.cannotChangeOthersPassword} />
+          ) : null}
           <Form form={passwordForm} layout="vertical" style={{ maxWidth: 400 }}>
             <Form.Item name="new_password" label={ud.labelNewPassword}>
-              <Input.Password placeholder={ud.phNewPassword} autoComplete="new-password" />
+              <Input.Password
+                placeholder={ud.phNewPassword}
+                autoComplete="new-password"
+                disabled={!canChangePassword}
+              />
             </Form.Item>
             <Form.Item
               name="confirm_password"
@@ -750,7 +782,11 @@ function UserDetailPageContent() {
                 }),
               ]}
             >
-              <Input.Password placeholder={ud.phConfirmPassword} autoComplete="new-password" />
+              <Input.Password
+                placeholder={ud.phConfirmPassword}
+                autoComplete="new-password"
+                disabled={!canChangePassword}
+              />
             </Form.Item>
           </Form>
         </Card>

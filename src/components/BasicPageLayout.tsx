@@ -82,7 +82,7 @@ const BasicPageLayout: React.FC<BasicPageLayoutProps> = ({
         <div className="px-4 py-1 bg-gray-50 border-b border-gray-200">
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
             {title && <Title level={2} style={{ margin: 0 }}>{title}</Title>}
-            {description && <Paragraph style={{ margin: 0, color: '#666' }}>{description}</Paragraph>}
+            {description && <Paragraph style={{ margin: 0, color: '#333' }}>{description}</Paragraph>}
           </Space>
         </div>
       )}

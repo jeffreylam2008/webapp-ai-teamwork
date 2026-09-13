@@ -5,6 +5,7 @@ export type BreadcrumbLabels = {
   home: string;
   administration: string;
   users: string;
+  roles: string;
   settings: string;
   importExport: string;
   system: string;
@@ -34,12 +35,15 @@ export type BreadcrumbLabels = {
   expandSidebar: string;
   collapseSidebar: string;
   currentShopHint: string;
+  currentWarehouseHint: string;
+  warehouseChipPrefix: string;
 };
 
 const EN: BreadcrumbLabels = {
   home: 'Home',
   administration: 'Administration',
   users: 'Users',
+  roles: 'Roles',
   settings: 'Settings',
   importExport: 'Import/Export',
   system: 'System',
@@ -68,12 +72,15 @@ const EN: BreadcrumbLabels = {
   expandSidebar: 'Expand sidebar',
   collapseSidebar: 'Collapse sidebar',
   currentShopHint: 'Current shop (selected at login)',
+  currentWarehouseHint: 'Operating warehouse for the current shop',
+  warehouseChipPrefix: 'Warehouse',
 };
 
 const ZH_HANT: BreadcrumbLabels = {
   home: '首頁',
   administration: '系統管理',
   users: '使用者',
+  roles: '角色',
   settings: '設定',
   importExport: '匯入／匯出',
   system: '系統',
@@ -102,6 +109,8 @@ const ZH_HANT: BreadcrumbLabels = {
   expandSidebar: '展開側邊欄',
   collapseSidebar: '收合側邊欄',
   currentShopHint: '目前店舖（登入時選擇）',
+  currentWarehouseHint: '目前店舖對應的作業倉庫',
+  warehouseChipPrefix: '倉庫',
 };
 
 export function getBreadcrumbLabels(lang: AppLanguage): BreadcrumbLabels {

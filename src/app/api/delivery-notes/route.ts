@@ -185,8 +185,7 @@ export async function POST(request: NextRequest) {
     let lineTotal = 0;
     for (const { qty } of byItem.values()) lineTotal += qty;
 
-    await dbService.query('START TRANSACTION');
-
+    await dbService.withTransaction(async () => {
     await dbService.query(
       `INSERT INTO t_transaction_h (
         trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code, wh_code,
@@ -236,8 +235,7 @@ export async function POST(request: NextRequest) {
     if (referCode.toUpperCase().startsWith('SO')) {
       await clearSalesOrderWarehouseStageHold(referCode);
     }
-
-    await dbService.query('COMMIT');
+    });
 
     void logTransactionAction({
       request,
@@ -253,11 +251,6 @@ export async function POST(request: NextRequest) {
       transCode,
     });
   } catch (err) {
-    try {
-      await dbService.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
     const msg = err instanceof Error ? err.message : 'Failed to create delivery note';
     console.error('[delivery-notes POST]', err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });

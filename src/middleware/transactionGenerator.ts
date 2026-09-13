@@ -121,8 +121,7 @@ async function generateNextTransactional(
 ): Promise<GenerateNextResult> {
   const seqQ = generatorSeqQuoted(sch)!;
 
-  await dbService.query('START TRANSACTION');
-  try {
+  return dbService.withTransaction(async () => {
     const rows = await loadGeneratorRows(displayPrefix, suffix);
     let keeperUid: number | null = null;
     let maxSeq = 0;
@@ -187,8 +186,6 @@ async function generateNextTransactional(
       );
     }
 
-    await dbService.query('COMMIT');
-
     return {
       success: true,
       transactionCode: `${displayPrefix}${suffix}-${pad3(nextNum)}`,
@@ -197,14 +194,7 @@ async function generateNextTransactional(
       prefix_ref: prefixRef,
       message: 'Generated successfully',
     };
-  } catch (e) {
-    try {
-      await dbService.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
-    throw e;
-  }
+  });
 }
 
 export class TransactionGeneratorMiddleware {

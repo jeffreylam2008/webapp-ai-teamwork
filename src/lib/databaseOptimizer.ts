@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { getSharedMysqlPool } from '@/lib/database';
 
 interface QueryResult<T> {
   data: T[];
@@ -25,23 +26,8 @@ class DatabaseOptimizer {
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
   private constructor() {
-    this.pool = mysql.createPool({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'dbadmin',
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME || 'teamwork',
-      waitForConnections: true,
-      connectionLimit: 20, // Increased connection limit
-      queueLimit: 0,
-      // Connection optimization
-      charset: 'utf8mb4',
-      // Query optimization
-      multipleStatements: false,
-      dateStrings: true,
-      // Performance tuning
-      maxIdle: 60000,
-      idleTimeout: 60000,
-    });
+    // Reuse the process-wide shared pool — do not create a second pool.
+    this.pool = getSharedMysqlPool();
   }
 
   public static getInstance(): DatabaseOptimizer {

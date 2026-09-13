@@ -6,6 +6,7 @@ import {
   canManageEmployeeAccess,
   ensureAdministratorAccessForEmployee,
   ensureEmployeeRoleTable,
+  isAdministratorEmployee,
 } from '@/lib/employeeRoleAccess';
 
 /**
@@ -86,11 +87,13 @@ export async function GET(request: NextRequest) {
     }
 
     const canManage = await canManageEmployeeAccess(employeeCode, shopCode || null, roleCode);
+    const isAdministrator = await isAdministratorEmployee(employeeCode, shopCode || null, roleCode);
 
     return NextResponse.json({
       success: true,
       data: permissions,
       can_manage_access: canManage,
+      is_administrator: isAdministrator,
       has_full_transaction_access: hasFullTransactionAccess(permissions),
       role_code: roleCode,
     });

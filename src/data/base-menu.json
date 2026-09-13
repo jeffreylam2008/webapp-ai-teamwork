@@ -26,9 +26,21 @@
     "icon": "AppstoreOutlined",
     "order": 4,
     "submenu": [
-      { "key": "items", "label": "Items", "href": "/products/items" },
-      { "key": "categories", "label": "Categories", "href": "/products/categories" },
-      { "key": "item-types", "label": "Item Types", "href": "/products/item-types" }
+      {
+        "key": "items",
+        "label": "Items",
+        "href": "/products/items"
+      },
+      {
+        "key": "categories",
+        "label": "Categories",
+        "href": "/products/categories"
+      },
+      {
+        "key": "item-types",
+        "label": "Item Types",
+        "href": "/products/item-types"
+      }
     ]
   },
   {
@@ -37,7 +49,11 @@
     "icon": "TruckOutlined",
     "order": 5,
     "submenu": [
-      { "key": "stock", "label": "Stock", "href": "/warehouse/stock" }
+      {
+        "key": "stock",
+        "label": "Stock",
+        "href": "/warehouse/stock"
+      }
     ]
   },
   {
@@ -46,7 +62,11 @@
     "icon": "CreditCardOutlined",
     "order": 5.5,
     "submenu": [
-      { "key": "purchases", "label": "Purchase Orders", "href": "/purchasing/purchases" }
+      {
+        "key": "purchases",
+        "label": "Purchase Orders",
+        "href": "/purchasing/purchases"
+      }
     ]
   },
   {
@@ -55,10 +75,26 @@
     "icon": "ShoppingOutlined",
     "order": 6,
     "submenu": [
-      { "key": "invoices", "label": "Invoices", "href": "/sales/invoices" },
-      { "key": "monthly-invoices", "label": "Monthly Invoices", "href": "/sales/monthly-invoices" },
-      { "key": "orders", "label": "Sales Order", "href": "/sales/orders" },
-      { "key": "quotations", "label": "Quotations", "href": "/sales/quotations" }
+      {
+        "key": "invoices",
+        "label": "Invoices",
+        "href": "/sales/invoices"
+      },
+      {
+        "key": "monthly-invoices",
+        "label": "Monthly Invoices",
+        "href": "/sales/monthly-invoices"
+      },
+      {
+        "key": "orders",
+        "label": "Sales Order",
+        "href": "/sales/orders"
+      },
+      {
+        "key": "quotations",
+        "label": "Quotations",
+        "href": "/sales/quotations"
+      }
     ]
   },
   {
@@ -67,8 +103,16 @@
     "icon": "BarChartOutlined",
     "order": 6.5,
     "submenu": [
-      { "key": "sales-report", "label": "Sales Report", "href": "/reports/sales" },
-      { "key": "warehouse-report", "label": "Warehouse Report", "href": "/reports/warehouse" }
+      {
+        "key": "sales-report",
+        "label": "Sales Report",
+        "href": "/reports/sales"
+      },
+      {
+        "key": "warehouse-report",
+        "label": "Warehouse Report",
+        "href": "/reports/warehouse"
+      }
     ]
   },
   {
@@ -77,22 +121,62 @@
     "icon": "SettingOutlined",
     "order": 7,
     "submenu": [
-      { "key": "users", "label": "Users", "href": "/administration/users" },
+      {
+        "key": "users",
+        "label": "Users",
+        "href": "/administration/users",
+        "submenu": [
+          { "key": "user-list", "label": "Users", "href": "/administration/users" },
+          { "key": "roles", "label": "Roles", "href": "/administration/roles" }
+        ]
+      },
       {
         "key": "settings",
         "label": "Settings",
         "href": "/administration/settings",
         "submenu": [
-          { "key": "district", "label": "Districts", "href": "/administration/settings/district" },
-          { "key": "prefix", "label": "Prefixes", "href": "/administration/settings/prefix" },
-          { "key": "payment-method", "label": "Payment Methods", "href": "/administration/settings/payment-method" },
-          { "key": "payment-term", "label": "Payment Terms", "href": "/administration/settings/payment-term" },
-          { "key": "shops", "label": "Shops", "href": "/administration/settings/shops" }
+          {
+            "key": "district",
+            "label": "Districts",
+            "href": "/administration/settings/district"
+          },
+          {
+            "key": "prefix",
+            "label": "Prefixes",
+            "href": "/administration/settings/prefix"
+          },
+          {
+            "key": "payment-method",
+            "label": "Payment Methods",
+            "href": "/administration/settings/payment-method"
+          },
+          {
+            "key": "payment-term",
+            "label": "Payment Terms",
+            "href": "/administration/settings/payment-term"
+          },
+          {
+            "key": "shops",
+            "label": "Shops",
+            "href": "/administration/settings/shops"
+          }
         ]
       },
-      { "key": "master-data", "label": "Import/Export", "href": "/administration/master-data" },
-      { "key": "system", "label": "System", "href": "/administration/settings/system" },
-      { "key": "profile", "label": "Profile", "href": "/administration/profile" }
+      {
+        "key": "master-data",
+        "label": "Import/Export",
+        "href": "/administration/master-data"
+      },
+      {
+        "key": "system",
+        "label": "System",
+        "href": "/administration/settings/system"
+      },
+      {
+        "key": "profile",
+        "label": "Profile",
+        "href": "/administration/profile"
+      }
     ]
   }
 ]

@@ -88,17 +88,17 @@ export async function POST(request: NextRequest) {
     );
     const hasDeliveryNote = Number((dnCheck.data?.[0] as { c?: unknown })?.c ?? 0) > 0;
 
-    await dbService.query('START TRANSACTION');
-    await dbService.query(
-      `UPDATE t_transaction_h SET is_settle = 1, modify_date = NOW()
-       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
-      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
-    );
-    await clearSalesOrderWarehouseStageHold(transCode);
-    if (!hasDeliveryNote) {
-      await deductWarehouseForConfirmedSalesOrder(transCode, stockShop);
-    }
-    await dbService.query('COMMIT');
+    await dbService.withTransaction(async () => {
+      await dbService.query(
+        `UPDATE t_transaction_h SET is_settle = 1, modify_date = NOW()
+         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+        [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
+      );
+      await clearSalesOrderWarehouseStageHold(transCode);
+      if (!hasDeliveryNote) {
+        await deductWarehouseForConfirmedSalesOrder(transCode, stockShop);
+      }
+    });
 
     void logTransactionAction({
       request,
@@ -113,11 +113,6 @@ export async function POST(request: NextRequest) {
       transCode,
     });
   } catch (err) {
-    try {
-      await dbService.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
     const msg = err instanceof Error ? err.message : 'Database error';
     console.error('[confirm-sales-order]', err);
     if (msg.startsWith('Insufficient warehouse stock')) {

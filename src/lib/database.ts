@@ -1,5 +1,6 @@
+import { AsyncLocalStorage } from 'async_hooks';
 import { createPool, Pool, PoolConnection, RowDataPacket, ResultSetHeader } from 'mysql2/promise';
-import { resolvedDbConfig } from '@/lib/db-connection-config';
+import { getResolvedDbConfig, type AppDbConfig } from '@/lib/db-connection-config';
 import { getMysqlTimezoneOffset } from '@/lib/systemTimezone';
 import { systemLogger } from '@/lib/simple-logger';
 
@@ -13,6 +14,17 @@ const RETRYABLE_CONNECTION_ERRORS = new Set([
   'EPIPE',
   'ENOTFOUND',
 ]);
+
+type TxContext = { connection: PoolConnection };
+
+/** Ensures all queries inside withTransaction() share one connection. */
+const txAls = new AsyncLocalStorage<TxContext>();
+
+type GlobalMysql = typeof globalThis & {
+  __webappMysqlPool?: Pool | null;
+};
+
+const globalForMysql = globalThis as GlobalMysql;
 
 function getErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== 'object') return undefined;
@@ -29,45 +41,105 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function createSharedPool(): Pool {
-  return createPool({
-    ...resolvedDbConfig,
+function createSharedPool(config: AppDbConfig): Pool {
+  const connectionLimit = config.connectionLimit ?? 10;
+  // mysql2 only runs the idle sweeper when maxIdle < connectionLimit.
+  // If maxIdle === connectionLimit, idleTimeout is ignored and Sleep sessions stay until wait_timeout.
+  const configuredMaxIdle = config.maxIdle ?? Math.min(2, connectionLimit);
+  const maxIdle =
+    configuredMaxIdle < connectionLimit
+      ? configuredMaxIdle
+      : Math.max(0, connectionLimit - 1);
+  const idleTimeout = config.idleTimeout ?? 60_000;
+
+  systemLogger.info('Database Connection Pool Initialized', {
+    host: config.host,
+    database: config.database,
+    connectionLimit,
+    maxIdle,
+    idleTimeout,
     timezone: mysqlTimezone,
-    enableKeepAlive: resolvedDbConfig.enableKeepAlive !== false,
-    keepAliveInitialDelay: resolvedDbConfig.keepAliveInitialDelay ?? 0,
-    idleTimeout: resolvedDbConfig.idleTimeout ?? 60_000,
-    maxIdle: resolvedDbConfig.maxIdle ?? resolvedDbConfig.connectionLimit ?? 10,
+  });
+
+  return createPool({
+    ...config,
+    timezone: mysqlTimezone,
+    enableKeepAlive: config.enableKeepAlive !== false,
+    keepAliveInitialDelay: config.keepAliveInitialDelay ?? 0,
+    connectionLimit,
+    idleTimeout,
+    maxIdle,
   });
 }
 
-// Single shared pool for all database access (timezone aligns NOW() with APP_TIMEZONE wall clock)
-const connectionPool: Pool = createSharedPool();
+/** Single shared pool for the process (survives Next.js HMR via globalThis). */
+export function getSharedMysqlPool(): Pool {
+  if (!globalForMysql.__webappMysqlPool) {
+    const config = getResolvedDbConfig();
+    globalForMysql.__webappMysqlPool = createSharedPool(config);
+  }
+  return globalForMysql.__webappMysqlPool;
+}
 
-// Utility function to execute a query with automatic connection management
+function getActiveRunner(): Pool | PoolConnection {
+  return txAls.getStore()?.connection ?? getSharedMysqlPool();
+}
+
+async function runSql(
+  sql: string,
+  params?: (string | number | boolean | null)[]
+): Promise<[unknown, unknown]> {
+  const runner = getActiveRunner();
+  const upper = sql.trim().toUpperCase();
+
+  // Explicit TX control must go through withTransaction() — never borrow a random pool conn.
+  if (
+    upper.startsWith('START TRANSACTION') ||
+    upper === 'BEGIN' ||
+    upper.startsWith('COMMIT') ||
+    upper.startsWith('ROLLBACK')
+  ) {
+    throw new Error(
+      'Do not run START TRANSACTION / COMMIT / ROLLBACK via query(). Use dbService.withTransaction() instead.'
+    );
+  }
+
+  const hasLargeStringParam = params?.some(
+    (p) => typeof p === 'string' && p.length > 65_535
+  );
+  if (hasLargeStringParam) {
+    return runner.query(sql, params) as Promise<[unknown, unknown]>;
+  }
+  return runner.execute(sql, params) as Promise<[unknown, unknown]>;
+}
+
+/**
+ * Execute a query with automatic connection management.
+ * Prefers pool.execute (auto acquire/release). Inside withTransaction(), uses the TX connection.
+ */
 export async function executeQuery<T = RowDataPacket[]>(
-  query: string, 
-  params: (string | number | boolean | null)[] = [], 
-  options: { 
-    singleResult?: boolean, 
-    logQuery?: boolean 
+  query: string,
+  params: (string | number | boolean | null)[] = [],
+  options: {
+    singleResult?: boolean;
+    logQuery?: boolean;
   } = {}
 ): Promise<T> {
-  let connection;
   const startTime = Date.now();
+  const maxAttempts = txAls.getStore() ? 1 : 3;
 
-  const maxAttempts = 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      connection = await connectionPool.getConnection();
-
-      const formattedParams = params.map(p =>
-        p === null ? '[NULL]' :
-        p === undefined ? '[UNDEFINED]' :
-        typeof p === 'string' ? `"${p}"` :
-        JSON.stringify(p)
-      );
-
       if (process.env.NODE_ENV !== 'production' && (options.logQuery || process.env.DEBUG_DB_QUERIES === 'true')) {
+        const formattedParams = params.map((p) =>
+          p === null
+            ? '[NULL]'
+            : p === undefined
+              ? '[UNDEFINED]'
+              : typeof p === 'string'
+                ? `"${p}"`
+                : JSON.stringify(p)
+        );
         systemLogger.debug('Database Query Execution', {
           query: query.replace(/\s+/g, ' ').trim(),
           params: formattedParams,
@@ -75,7 +147,7 @@ export async function executeQuery<T = RowDataPacket[]>(
         });
       }
 
-      const [rows] = await connection.execute(query, params);
+      const [rows] = await runSql(query, params);
 
       const duration = Date.now() - startTime;
       if (duration > 100) {
@@ -87,13 +159,9 @@ export async function executeQuery<T = RowDataPacket[]>(
       }
 
       return options.singleResult
-        ? (Array.isArray(rows) && rows.length > 0 ? rows[0] as T : null as T)
-        : rows as T;
+        ? ((Array.isArray(rows) && rows.length > 0 ? rows[0] : null) as T)
+        : (rows as T);
     } catch (error) {
-      if (connection) {
-        connection.release();
-        connection = undefined;
-      }
       if (attempt < maxAttempts && isRetryableConnectionError(error)) {
         systemLogger.warn('Database connection error, retrying executeQuery', {
           attempt,
@@ -108,21 +176,18 @@ export async function executeQuery<T = RowDataPacket[]>(
         timestamp: new Date().toISOString(),
       });
       throw error;
-    } finally {
-      if (connection) {
-        connection.release();
-        connection = undefined;
-      }
     }
   }
 
   throw new Error('executeQuery failed after retries');
 }
 
-// Utility to close the connection pool when the application is shutting down
 export async function closeConnectionPool() {
   try {
-    await connectionPool.end();
+    if (globalForMysql.__webappMysqlPool) {
+      await globalForMysql.__webappMysqlPool.end();
+      globalForMysql.__webappMysqlPool = null;
+    }
     systemLogger.info('Database Connection Pool Closed Successfully');
   } catch (error) {
     systemLogger.error('Error Closing Database Connection Pool', error as Error);
@@ -143,42 +208,51 @@ interface DatabaseError {
 }
 
 class DatabaseService {
-  private pool: Pool;
+  /**
+   * Run fn inside a real MySQL transaction on a single pooled connection.
+   * All dbService.query / executeQuery calls inside fn reuse that connection.
+   * Connection is always released in finally (prevents pool exhaustion).
+   */
+  async withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+    if (txAls.getStore()) {
+      // Already in a transaction — join the existing one (no nested BEGIN).
+      return fn();
+    }
 
-  constructor(pool: Pool = connectionPool) {
-    this.pool = pool;
-    systemLogger.info('Database Connection Pool Initialized', {
-      host: resolvedDbConfig.host,
-      database: resolvedDbConfig.database,
-      connectionLimit: resolvedDbConfig.connectionLimit,
-      timezone: mysqlTimezone,
-    });
+    const connection = await getSharedMysqlPool().getConnection();
+    try {
+      await connection.beginTransaction();
+      try {
+        const result = await txAls.run({ connection }, fn);
+        await connection.commit();
+        return result;
+      } catch (err) {
+        try {
+          await connection.rollback();
+        } catch (rollbackErr) {
+          systemLogger.warn('Transaction rollback failed', {
+            error: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
+          });
+        }
+        throw err;
+      }
+    } finally {
+      connection.release();
+    }
   }
 
   private async runQuery(
     sql: string,
     params?: (string | number | boolean | null)[]
   ): Promise<[unknown, unknown]> {
-    const upper = sql.trim().toUpperCase();
-    if (
-      upper.startsWith('START') ||
-      upper.startsWith('COMMIT') ||
-      upper.startsWith('ROLLBACK')
-    ) {
-      return this.pool.query(sql);
-    }
-    // Large TEXT/BLOB params (e.g. base64 images) can fail with prepared statements / packet limits
-    const hasLargeStringParam = params?.some(
-      (p) => typeof p === 'string' && p.length > 65_535
-    );
-    if (hasLargeStringParam) {
-      return this.pool.query(sql, params);
-    }
-    return this.pool.execute(sql, params);
+    return runSql(sql, params);
   }
 
-  async query<T = RowDataPacket>(sql: string, params?: (string | number | boolean | null)[]): Promise<QueryResult<T>> {
-    const maxAttempts = 3;
+  async query<T = RowDataPacket>(
+    sql: string,
+    params?: (string | number | boolean | null)[]
+  ): Promise<QueryResult<T>> {
+    const maxAttempts = txAls.getStore() ? 1 : 3;
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -229,38 +303,53 @@ class DatabaseService {
     } as DatabaseError;
   }
 
-  async select<T = RowDataPacket>(table: string, columns: string[] = ['*'], where?: string, params?: (string | number | boolean | null)[]): Promise<QueryResult<T>> {
+  async select<T = RowDataPacket>(
+    table: string,
+    columns: string[] = ['*'],
+    where?: string,
+    params?: (string | number | boolean | null)[]
+  ): Promise<QueryResult<T>> {
     const columnList = columns.join(', ');
     let sql = `SELECT ${columnList} FROM ${table}`;
-    
+
     if (where) {
       sql += ` WHERE ${where}`;
     }
-    
+
     return this.query<T>(sql, params);
   }
 
-  async insert(table: string, data: Record<string, string | number | boolean | null>): Promise<QueryResult> {
+  async insert(
+    table: string,
+    data: Record<string, string | number | boolean | null>
+  ): Promise<QueryResult> {
     const columns = Object.keys(data);
     const values = Object.values(data);
     const placeholders = columns.map(() => '?').join(', ');
-    
-    // Add backticks around column names to handle reserved words like 'desc'
-    const quotedColumns = columns.map(col => `\`${col}\``).join(', ');
-    
+    const quotedColumns = columns.map((col) => `\`${col}\``).join(', ');
     const sql = `INSERT INTO ${table} (${quotedColumns}) VALUES (${placeholders})`;
     return this.query(sql, values);
   }
 
-  async update(table: string, data: Record<string, string | number | boolean | null>, where: string, params?: (string | number | boolean | null)[]): Promise<QueryResult> {
-    const setClause = Object.keys(data).map(key => `\`${key}\` = ?`).join(', ');
+  async update(
+    table: string,
+    data: Record<string, string | number | boolean | null>,
+    where: string,
+    params?: (string | number | boolean | null)[]
+  ): Promise<QueryResult> {
+    const setClause = Object.keys(data)
+      .map((key) => `\`${key}\` = ?`)
+      .join(', ');
     const values = [...Object.values(data), ...(params || [])];
-    
     const sql = `UPDATE ${table} SET ${setClause} WHERE ${where}`;
     return this.query(sql, values);
   }
 
-  async delete(table: string, where: string, params?: (string | number | boolean | null)[]): Promise<QueryResult> {
+  async delete(
+    table: string,
+    where: string,
+    params?: (string | number | boolean | null)[]
+  ): Promise<QueryResult> {
     const sql = `DELETE FROM ${table} WHERE ${where}`;
     return this.query(sql, params);
   }
@@ -276,48 +365,25 @@ class DatabaseService {
     }
   }
 
-  // Transaction-specific methods that don't use prepared statements
+  /** @deprecated Use withTransaction() */
   async startTransaction(): Promise<void> {
-    await this.pool.query('START TRANSACTION');
+    throw new Error('Use dbService.withTransaction(async () => { ... }) instead of startTransaction()');
   }
 
+  /** @deprecated Use withTransaction() */
   async commitTransaction(): Promise<void> {
-    await this.pool.query('COMMIT');
+    throw new Error('Use dbService.withTransaction(async () => { ... }) instead of commitTransaction()');
   }
 
+  /** @deprecated Use withTransaction() */
   async rollbackTransaction(): Promise<void> {
-    await this.pool.query('ROLLBACK');
+    throw new Error('Use dbService.withTransaction(async () => { ... }) instead of rollbackTransaction()');
   }
 
   async close(): Promise<void> {
-    await this.pool.end();
-  }
-
-  // Convenience methods for common operations
-  async getAllUsers() {
-    return this.select('users');
-  }
-
-  async getAllProducts() {
-    return this.select('products');
-  }
-
-  async getProductById(id: number) {
-    return this.select('products', ['*'], 'id = ?', [id]);
-  }
-
-  async createUser(userData: { name: string; email: string; password: string }) {
-    return this.insert('users', userData);
-  }
-
-  async updateProduct(id: number, productData: Record<string, string | number | boolean | null>) {
-    return this.update('products', productData, 'id = ?', [id]);
-  }
-
-  async deleteProduct(id: number) {
-    return this.delete('products', 'id = ?', [id]);
+    await closeConnectionPool();
   }
 }
 
 export const dbService = new DatabaseService();
-export default dbService; 
+export default dbService;

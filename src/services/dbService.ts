@@ -1,58 +1,50 @@
-import mysql from 'mysql2/promise';
-import { resolvedDbConfig } from '@/lib/db-connection-config';
+/**
+ * Compatibility layer — all DB access goes through the single shared pool in @/lib/database.
+ * Do not create a second mysql pool here (that was leaking connections under Next.js HMR).
+ */
+import type { PoolConnection } from 'mysql2/promise';
+import {
+  dbService,
+  executeQuery as sharedExecuteQuery,
+  getSharedMysqlPool,
+} from '@/lib/database';
 
-// Create a connection pool (same env-aware config as @/lib/database)
-const pool = mysql.createPool({
-  host: resolvedDbConfig.host,
-  port: resolvedDbConfig.port,
-  user: resolvedDbConfig.user,
-  password: resolvedDbConfig.password,
-  database: resolvedDbConfig.database,
-  connectTimeout: resolvedDbConfig.connectTimeout,
-  waitForConnections: resolvedDbConfig.waitForConnections,
-  connectionLimit: resolvedDbConfig.connectionLimit,
-  queueLimit: resolvedDbConfig.queueLimit,
-});
-
-// Get a database connection with query method
 export async function getDbService() {
-  return pool;
+  return getSharedMysqlPool();
 }
 
-// Helper function to execute SQL queries
 export async function executeQuery<T>(
   query: string,
   params?: (string | number | boolean | null)[]
 ): Promise<T> {
   try {
-    const [rows] = await pool.execute(query, params);
-    return rows as T;
+    return await sharedExecuteQuery<T>(query, params ?? []);
   } catch (error) {
     console.error('Database query error:', error);
     throw error;
   }
 }
 
-// Helper function to begin a transaction
-export async function beginTransaction() {
-  const connection = await pool.getConnection();
+/** Prefer dbService.withTransaction() for multi-statement transactions. */
+export async function beginTransaction(): Promise<PoolConnection> {
+  const connection = await getSharedMysqlPool().getConnection();
   await connection.beginTransaction();
   return connection;
 }
 
-// Helper function to commit a transaction
-export async function commitTransaction(connection: mysql.PoolConnection) {
+export async function commitTransaction(connection: PoolConnection) {
   await connection.commit();
   connection.release();
 }
 
-// Helper function to rollback a transaction
-export async function rollbackTransaction(connection: mysql.PoolConnection) {
-  await connection.rollback();
-  connection.release();
+export async function rollbackTransaction(connection: PoolConnection) {
+  try {
+    await connection.rollback();
+  } finally {
+    connection.release();
+  }
 }
 
-// Helper function to check if a record exists
 export async function recordExists(
   table: string,
   field: string,
@@ -63,20 +55,17 @@ export async function recordExists(
   return result.length > 0;
 }
 
-// Helper function to check if a record can be deleted
 export async function canDeleteRecord(
   table: string,
   field: string,
   value: string | number,
   relatedTables: { table: string; field: string }[]
 ): Promise<boolean> {
-  // First check if the record exists
   const exists = await recordExists(table, field, value);
   if (!exists) {
     return false;
   }
 
-  // Then check each related table for references
   for (const related of relatedTables) {
     const query = `SELECT 1 FROM ${related.table} WHERE ${related.field} = ? LIMIT 1`;
     const result = await executeQuery<{ [key: string]: unknown }[]>(query, [value]);
@@ -88,7 +77,6 @@ export async function canDeleteRecord(
   return true;
 }
 
-// Helper function to get the total count of records
 export async function getTotalCount(
   table: string,
   whereClause?: string,
@@ -99,7 +87,6 @@ export async function getTotalCount(
   return result[0].total;
 }
 
-// Helper function to build a WHERE clause from filters
 export function buildWhereClause(
   filters: Record<string, string | number | boolean | null>,
   searchFields: string[]
@@ -107,14 +94,12 @@ export function buildWhereClause(
   const conditions: string[] = [];
   const params: (string | number | boolean | null)[] = [];
 
-  // Handle search filter
   if (filters.search && searchFields.length > 0) {
-    const searchConditions = searchFields.map(field => `${field} LIKE ?`);
+    const searchConditions = searchFields.map((field) => `${field} LIKE ?`);
     conditions.push(`(${searchConditions.join(' OR ')})`);
     params.push(...searchFields.map(() => `%${filters.search}%`));
   }
 
-  // Handle other filters
   Object.entries(filters).forEach(([key, value]) => {
     if (key !== 'search' && value) {
       conditions.push(`${key} = ?`);
@@ -126,18 +111,13 @@ export function buildWhereClause(
   return { whereClause, params };
 }
 
-// Helper function to build ORDER BY clause
-export function buildOrderClause(
-  sortField?: string,
-  sortOrder?: 'ASC' | 'DESC'
-): string {
+export function buildOrderClause(sortField?: string, sortOrder?: 'ASC' | 'DESC'): string {
   if (sortField) {
     return `ORDER BY ${sortField} ${sortOrder || 'ASC'}`;
   }
   return '';
 }
 
-// Helper function to build LIMIT/OFFSET clause
 export function buildPaginationClause(
   page?: number,
   pageSize?: number
@@ -146,11 +126,11 @@ export function buildPaginationClause(
     const offset = (page - 1) * pageSize;
     return {
       limitClause: 'LIMIT ? OFFSET ?',
-      params: [pageSize, offset]
+      params: [pageSize, offset],
     };
   }
   return { limitClause: '', params: [] };
 }
 
-// Export the pool for direct access if needed
-export default pool;
+export { dbService };
+export default getSharedMysqlPool;

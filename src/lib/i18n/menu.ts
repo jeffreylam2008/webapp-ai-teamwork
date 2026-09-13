@@ -34,6 +34,8 @@ const ZH_HANT: Record<MenuKey, string> = {
 
   administration: '系統管理',
   users: '用戶',
+  'user-list': '用戶',
+  roles: '角色',
   settings: '設定',
   district: '地區',
   prefix: '前綴',

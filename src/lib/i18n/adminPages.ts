@@ -27,7 +27,76 @@ export type AdminPagesTexts = {
     empty: string;
     add: string;
     onlyAdministratorCanAdd: string;
+    failedDelete: string;
+    deleted: string;
+    deleteCancel: string;
+    deleteOk: string;
+    deleteConfirm: (username: string, code: string) => string;
+    deleteTitle: string;
+    failedUpdateStatus: string;
+    userDisabled: string;
+    userEnabled: string;
+    cannotDisableSelf: string;
+    cannotDeleteSelf: string;
+    actionEnableUser: string;
+    actionDisableUser: string;
+    actionDeleteUser: string;
   };
+  roleTemplates: {
+    adminRequired: string;
+    title: string;
+    titleWithCount: (n: number) => string;
+    description: string;
+    breadcrumb: string;
+    add: string;
+    refresh: string;
+    colRoleCode: string;
+    colRoleKey: string;
+    colRoleName: string;
+    colDescription: string;
+    colStatus: string;
+    colEmployees: string;
+    colActions: string;
+    statusActive: string;
+    statusInactive: string;
+    actionEdit: string;
+    actionDelete: string;
+    deleteTitle: string;
+    deleteConfirm: (name: string) => string;
+    deleteOk: string;
+    deleteCancel: string;
+    deleted: string;
+    failedDelete: string;
+    failedLoad: string;
+    protectedHint: string;
+    createTitle: string;
+    createDescription: string;
+    editTitle: (name: string) => string;
+    editDescription: string;
+    backToList: string;
+    saveCreate: string;
+    saveEdit: string;
+    cardIdentity: string;
+    cardIdentityHint: string;
+    cardAccess: string;
+    cardAccessHint: string;
+    labelRoleKey: string;
+    labelRoleName: string;
+    labelDescription: string;
+    labelStatus: string;
+    labelSortOrder: string;
+    phRoleKey: string;
+    phRoleName: string;
+    phDescription: string;
+    roleKeyHint: string;
+    requiredFields: string;
+    created: string;
+    updated: string;
+    failedCreate: string;
+    failedUpdate: string;
+    failedLoadRole: string;
+    cannotDeleteProtected: string;
+  }
   userAdd: {
     title: string;
     description: string;
@@ -426,6 +495,79 @@ const EN: AdminPagesTexts = {
     empty: 'No users found.',
     add: 'Add User',
     onlyAdministratorCanAdd: 'Only an Administrator can add employees.',
+    actionDeleteUser: 'Delete user',
+    actionDisableUser: 'Disable user',
+    actionEnableUser: 'Enable user',
+    cannotDeleteSelf: 'You cannot delete your own account',
+    cannotDisableSelf: 'You cannot disable your own account',
+    deleteTitle: 'Delete user',
+    deleteConfirm: (username: string, code: string) =>
+      `Delete user "${username}" (${code})? This cannot be undone.`,
+    deleteOk: 'Delete',
+    deleteCancel: 'Cancel',
+    deleted: 'User deleted',
+    failedDelete: 'Failed to delete user',
+    userEnabled: 'User enabled',
+    userDisabled: 'User disabled',
+    failedUpdateStatus: 'Failed to update user status',
+  },
+  roleTemplates: {
+    adminRequired: 'Only an Administrator can manage role templates.',
+    title: 'Role templates',
+    titleWithCount: (n: number) => `Role templates (${n})`,
+    description:
+      'Define employee roles and their default view / create / edit / delete access. Applied when creating employees or resetting access.',
+    breadcrumb: 'Roles',
+    add: 'Add role',
+    refresh: 'Refresh',
+    colRoleCode: 'Code',
+    colRoleKey: 'Key',
+    colRoleName: 'Name',
+    colDescription: 'Description',
+    colStatus: 'Status',
+    colEmployees: 'Employees',
+    colActions: 'Actions',
+    statusActive: 'Active',
+    statusInactive: 'Inactive',
+    actionEdit: 'Edit role',
+    actionDelete: 'Delete role',
+    deleteTitle: 'Delete role',
+    deleteConfirm: (name: string) =>
+      `Delete role "${name}"? This cannot be undone. Employees using this role must be reassigned first.`,
+    deleteOk: 'Delete',
+    deleteCancel: 'Cancel',
+    deleted: 'Role deleted',
+    failedDelete: 'Failed to delete role',
+    failedLoad: 'Failed to load roles',
+    protectedHint: 'The Administrator role cannot be deleted or deactivated.',
+    createTitle: 'Add role template',
+    createDescription: 'Create a role and set its default transaction access matrix.',
+    editTitle: (name: string) => `Edit role: ${name}`,
+    editDescription:
+      'Update role details and default access. Existing employees keep current access until you reset them.',
+    backToList: 'Back to roles',
+    saveCreate: 'Create',
+    saveEdit: 'Save',
+    cardIdentity: 'Role details',
+    cardIdentityHint: 'Key is used in the system; name is shown in employee forms.',
+    cardAccess: 'Default transaction access',
+    cardAccessHint: 'These flags become the employee access template for this role.',
+    labelRoleKey: 'Role key',
+    labelRoleName: 'Role name',
+    labelDescription: 'Description',
+    labelStatus: 'Status',
+    labelSortOrder: 'Sort order',
+    phRoleKey: 'e.g. sales_worker',
+    phRoleName: 'e.g. Sales Worker',
+    phDescription: 'Optional description',
+    roleKeyHint: 'Lowercase letters, digits, underscore. Starts with a letter.',
+    requiredFields: 'Role key and role name are required',
+    created: 'Role created',
+    updated: 'Role updated',
+    failedCreate: 'Failed to create role',
+    failedUpdate: 'Failed to update role',
+    failedLoadRole: 'Failed to load role',
+    cannotDeleteProtected: 'Cannot delete the Administrator role',
   },
   userAdd: {
     title: 'Add User',
@@ -838,6 +980,77 @@ const ZH_HANT: AdminPagesTexts = {
     empty: '找不到使用者。',
     add: '新增使用者',
     onlyAdministratorCanAdd: '只有管理員可以新增員工。',
+    actionDeleteUser: '刪除使用者',
+    actionDisableUser: '停用使用者',
+    actionEnableUser: '啟用使用者',
+    cannotDeleteSelf: '不可刪除自己的帳號',
+    cannotDisableSelf: '不可停用自己的帳號',
+    deleteTitle: '刪除使用者',
+    deleteConfirm: (username: string, code: string) =>
+      `確定刪除使用者「${username}」（${code}）？此操作無法復原。`,
+    deleteOk: '刪除',
+    deleteCancel: '取消',
+    deleted: '使用者已刪除',
+    failedDelete: '無法刪除使用者',
+    userEnabled: '使用者已啟用',
+    userDisabled: '使用者已停用',
+    failedUpdateStatus: '無法更新使用者狀態',
+  },
+  roleTemplates: {
+    adminRequired: '僅系統管理員可管理角色範本。',
+    title: '角色範本',
+    titleWithCount: (n: number) => `角色範本（${n}）`,
+    description: '定義員工角色及其預設檢視／新增／編輯／刪除權限。建立員工或重設存取時會套用。',
+    breadcrumb: '角色',
+    add: '新增角色',
+    refresh: '重新整理',
+    colRoleCode: '代碼',
+    colRoleKey: '鍵值',
+    colRoleName: '名稱',
+    colDescription: '說明',
+    colStatus: '狀態',
+    colEmployees: '員工人數',
+    colActions: '操作',
+    statusActive: '啟用',
+    statusInactive: '停用',
+    actionEdit: '編輯角色',
+    actionDelete: '刪除角色',
+    deleteTitle: '刪除角色',
+    deleteConfirm: (name: string) =>
+      `確定刪除角色「${name}」？此操作無法復原。仍使用此角色的員工須先改派。`,
+    deleteOk: '刪除',
+    deleteCancel: '取消',
+    deleted: '角色已刪除',
+    failedDelete: '無法刪除角色',
+    failedLoad: '無法載入角色',
+    protectedHint: '系統管理員角色不可刪除或停用。',
+    createTitle: '新增角色範本',
+    createDescription: '建立角色並設定預設交易存取矩陣。',
+    editTitle: (name: string) => `編輯角色：${name}`,
+    editDescription: '更新角色資料與預設存取。現有員工的存取不會自動變更，除非重設。',
+    backToList: '返回角色列表',
+    saveCreate: '建立',
+    saveEdit: '儲存',
+    cardIdentity: '角色資料',
+    cardIdentityHint: '鍵值供系統使用；名稱顯示於員工表單。',
+    cardAccess: '預設交易存取',
+    cardAccessHint: '這些旗標會成為此角色的員工存取範本。',
+    labelRoleKey: '角色鍵值',
+    labelRoleName: '角色名稱',
+    labelDescription: '說明',
+    labelStatus: '狀態',
+    labelSortOrder: '排序',
+    phRoleKey: '例如 sales_worker',
+    phRoleName: '例如 銷售人員',
+    phDescription: '選填說明',
+    roleKeyHint: '小寫英文字母、數字、底線；須以字母開頭。',
+    requiredFields: '角色鍵值與名稱為必填',
+    created: '角色已建立',
+    updated: '角色已更新',
+    failedCreate: '無法建立角色',
+    failedUpdate: '無法更新角色',
+    failedLoadRole: '無法載入角色',
+    cannotDeleteProtected: '不可刪除系統管理員角色',
   },
   userAdd: {
     title: '新增使用者',

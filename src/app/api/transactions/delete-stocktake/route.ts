@@ -34,10 +34,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    await dbService.query('START TRANSACTION');
-
-    try {
-      // Load header to verify it's a Stocktake (ST) and get shop_code
+    await dbService.withTransaction(async () => {
       const headerResult = await dbService.query<{
         prefix?: string;
         prefix_ref?: string | null;
@@ -57,14 +54,10 @@ export async function DELETE(request: NextRequest) {
 
       const shopCode = header.shop_code || '';
 
-      // Load details to compute per-item qty
       const detailsResult = await dbService.query<{
         item_code: string;
         qty: number;
-      }>(
-        'SELECT item_code, qty FROM t_transaction_d WHERE trans_code = ?',
-        [transCode]
-      );
+      }>('SELECT item_code, qty FROM t_transaction_d WHERE trans_code = ?', [transCode]);
 
       const qtyPerItem: Record<string, number> = {};
       for (const row of detailsResult.data || []) {
@@ -73,13 +66,11 @@ export async function DELETE(request: NextRequest) {
         qtyPerItem[code] = (qtyPerItem[code] || 0) + Number(row.qty || 0);
       }
 
-      // Reverse warehouse stock: ST creation already applied qty; deleting should subtract the same qty
       const itemCodes = Object.keys(qtyPerItem);
       for (const itemCode of itemCodes) {
         const qty = qtyPerItem[itemCode] || 0;
         if (qty === 0) continue;
 
-        // Ensure row exists in t_warehouse
         await dbService.query(
           `INSERT INTO t_warehouse (item_code, qty, type, shop_code, create_date, modify_date)
            SELECT ?, 0, 'in', ?, NOW(), NOW()
@@ -88,50 +79,31 @@ export async function DELETE(request: NextRequest) {
           [itemCode, shopCode, itemCode]
         );
 
-        // Reverse the quantity
         await dbService.query(
           'UPDATE t_warehouse SET qty = qty - ?, modify_date = NOW() WHERE item_code = ?',
           [qty, itemCode]
         );
       }
 
-      // Delete details and header
       await dbService.query('DELETE FROM t_transaction_d WHERE trans_code = ?', [transCode]);
       await dbService.query('DELETE FROM t_transaction_h WHERE trans_code = ?', [transCode]);
+    });
 
-      await dbService.query('COMMIT');
-      void logTransactionAction({
-        request,
-        action: 'DELETE',
-        transCode,
-        prefix: PREFIX_REF.ST,
-      });
+    void logTransactionAction({
+      request,
+      action: 'DELETE',
+      transCode,
+      prefix: PREFIX_REF.ST,
+    });
 
-      return NextResponse.json({
-        success: true,
-        message: `Stocktake ${transCode} deleted and warehouse stock reversed.`,
-      });
-    } catch (inner) {
-      await dbService.query('ROLLBACK');
-      if (inner instanceof Error) {
-        return NextResponse.json(
-          { success: false, error: inner.message },
-          { status: 400 }
-        );
-      }
-      return NextResponse.json(
-        { success: false, error: 'Failed to delete stocktake' },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({
+      success: true,
+      message: `Stocktake ${transCode} deleted and warehouse stock reversed.`,
+    });
   } catch (error) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Internal server error',
-      },
-      { status: 500 }
-    );
+    const msg = error instanceof Error ? error.message : 'Internal server error';
+    const status =
+      msg.includes('not found') || msg.includes('not a Stocktake') ? 400 : 500;
+    return NextResponse.json({ success: false, error: msg }, { status });
   }
 }
-

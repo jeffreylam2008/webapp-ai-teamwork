@@ -8,8 +8,8 @@ import { getHubPagesTexts } from '@/lib/i18n/hubPages';
 import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
-import { EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Table, Button, message, Tag, Spin, Space } from 'antd';
+import { CheckCircleOutlined, DeleteOutlined, EyeOutlined, PlusOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { App, Table, Button, Tag, Spin } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
@@ -32,10 +32,16 @@ export default function AdministrationUsersPage() {
   const bc = getBreadcrumbLabels(lang);
   const hub = getHubPagesTexts(lang).administrationHub;
   const a = getAdminPagesTexts(lang).usersList;
-  const { token } = useAuth();
+  const { token, user: currentUser } = useAuth();
   const { isAdministrator, loading: permissionsLoading } = usePermissions();
+  const { message: messageApi, modal } = App.useApp();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingCode, setDeletingCode] = useState<string | null>(null);
+  const [statusCode, setStatusCode] = useState<string | null>(null);
+
+  const currentEmployeeCode =
+    currentUser?.employee_code != null ? String(currentUser.employee_code).trim() : '';
 
   const fetchUsers = useCallback(async () => {
     if (!token) return;
@@ -47,64 +53,168 @@ export default function AdministrationUsersPage() {
         setUsers(result.data);
       } else {
         if (res.status === 403) {
-          message.error(a.supervisorRequired);
+          messageApi.error(a.supervisorRequired);
           router.push('/');
           return;
         }
-        message.error(result.error || a.failedLoad);
+        messageApi.error(result.error || a.failedLoad);
       }
     } catch {
-      message.error(a.failedLoad);
+      messageApi.error(a.failedLoad);
     } finally {
       setLoading(false);
     }
-  }, [token, a.supervisorRequired, a.failedLoad, router]);
+  }, [token, a.supervisorRequired, a.failedLoad, router, messageApi]);
 
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const messageText = params.get('message');
-    const type = params.get('type') as 'success' | 'error' | null;
-    if (messageText && type) {
-      if (type === 'success') message.success(messageText);
-      else message.error(messageText);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
+  const handleDelete = useCallback(
+    (record: AdminUser) => {
+      if (!isAdministrator) return;
+      const code = String(record.employee_code);
+      if (currentEmployeeCode && code === currentEmployeeCode) {
+        messageApi.error(a.cannotDeleteSelf);
+        return;
+      }
+      modal.confirm({
+        title: a.deleteTitle,
+        content: a.deleteConfirm(record.username, code),
+        okText: a.deleteOk,
+        cancelText: a.deleteCancel,
+        okButtonProps: { danger: true },
+        onOk: async () => {
+          if (!token) return;
+          setDeletingCode(code);
+          try {
+            const res = await fetchWithAuth(
+              `/api/administration/users/${encodeURIComponent(code)}`,
+              token,
+              { method: 'DELETE' }
+            );
+            const json = await res.json();
+            if (json.success) {
+              messageApi.success(a.deleted);
+              await fetchUsers();
+            } else {
+              messageApi.error(json.error || a.failedDelete);
+            }
+          } catch {
+            messageApi.error(a.failedDelete);
+          } finally {
+            setDeletingCode(null);
+          }
+        },
+      });
+    },
+    [
+      isAdministrator,
+      currentEmployeeCode,
+      messageApi,
+      modal,
+      a,
+      token,
+      fetchUsers,
+    ]
+  );
 
-  const handleAddUser = useCallback(() => {
-    if (!isAdministrator) {
-      message.error(a.onlyAdministratorCanAdd);
-      return;
-    }
-    router.push('/administration/users/add');
-  }, [router, isAdministrator, a.onlyAdministratorCanAdd]);
+  const handleStatusToggle = useCallback(
+    async (record: AdminUser) => {
+      if (!isAdministrator || !token) return;
+      const code = String(record.employee_code);
+      const isSelf = currentEmployeeCode !== '' && code === currentEmployeeCode;
+      const nextStatus = record.status === 1 ? 0 : 1;
+      if (isSelf && nextStatus === 0) {
+        messageApi.error(a.cannotDisableSelf);
+        return;
+      }
+      setStatusCode(code);
+      try {
+        const res = await fetchWithAuth(
+          `/api/administration/users/${encodeURIComponent(code)}`,
+          token,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: nextStatus }),
+          }
+        );
+        const json = await res.json();
+        if (json.success) {
+          messageApi.success(nextStatus === 1 ? a.userEnabled : a.userDisabled);
+          setUsers((prev) =>
+            prev.map((u) =>
+              String(u.employee_code) === code ? { ...u, status: nextStatus } : u
+            )
+          );
+        } else {
+          messageApi.error(json.error || a.failedUpdateStatus);
+        }
+      } catch {
+        messageApi.error(a.failedUpdateStatus);
+      } finally {
+        setStatusCode(null);
+      }
+    },
+    [isAdministrator, token, currentEmployeeCode, messageApi, a]
+  );
 
   const columns = useMemo(
     () => [
       {
         title: '',
         key: 'actions',
-        width: 100,
+        width: isAdministrator ? 140 : 100,
         align: 'left' as const,
-        render: (_: unknown, record: AdminUser) => (
-          <div className="flex flex-row items-center justify-start gap-2">
-            <button
-              type="button"
-              className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-blue-100 text-blue-600 hover:text-blue-800 transition"
-              title={a.actionViewUser}
-              aria-label={`${a.colUsername}: ${record.username}`}
-              onClick={() =>
-                router.push('/administration/users/detail/' + encodeURIComponent(record.employee_code))
-              }
-            >
-              <EyeOutlined />
-            </button>
-          </div>
-        ),
+        render: (_: unknown, record: AdminUser) => {
+          const code = String(record.employee_code);
+          const isSelf = currentEmployeeCode !== '' && code === currentEmployeeCode;
+          const isActive = record.status === 1;
+          return (
+            <div className="flex flex-row items-center justify-start gap-2">
+              <button
+                type="button"
+                className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-blue-100 text-blue-600 hover:text-blue-800 transition"
+                title={a.actionViewUser}
+                aria-label={`${a.colUsername}: ${record.username}`}
+                onClick={() =>
+                  router.push('/administration/users/detail/' + encodeURIComponent(code))
+                }
+              >
+                <EyeOutlined />
+              </button>
+              {isAdministrator && !permissionsLoading ? (
+                <>
+                  <button
+                    type="button"
+                    className={`w-8 h-8 flex items-center justify-center rounded bg-gray-100 transition disabled:opacity-40 ${
+                      isActive
+                        ? 'hover:bg-orange-100 text-orange-600 hover:text-orange-800'
+                        : 'hover:bg-green-100 text-green-600 hover:text-green-800'
+                    }`}
+                    title={isActive ? a.actionDisableUser : a.actionEnableUser}
+                    aria-label={isActive ? a.actionDisableUser : a.actionEnableUser}
+                    disabled={(isSelf && isActive) || statusCode === code || deletingCode === code}
+                    onClick={() => handleStatusToggle(record)}
+                  >
+                    {isActive ? <StopOutlined /> : <CheckCircleOutlined />}
+                  </button>
+                  <button
+                    type="button"
+                    className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-red-100 text-red-600 hover:text-red-800 transition disabled:opacity-40"
+                    title={a.actionDeleteUser}
+                    aria-label={a.actionDeleteUser}
+                    disabled={isSelf || deletingCode === code || statusCode === code}
+                    onClick={() => handleDelete(record)}
+                  >
+                    <DeleteOutlined />
+                  </button>
+                </>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         title: a.colUsername,
@@ -117,7 +227,8 @@ export default function AdministrationUsersPage() {
         title: a.colEmployeeCode,
         dataIndex: 'employee_code',
         key: 'employee_code',
-        sorter: (x: AdminUser, y: AdminUser) => x.employee_code.localeCompare(y.employee_code),
+        sorter: (x: AdminUser, y: AdminUser) =>
+          String(x.employee_code).localeCompare(String(y.employee_code)),
         width: 120,
       },
       {
@@ -157,32 +268,37 @@ export default function AdministrationUsersPage() {
           s === 1 ? <Tag color="green">{a.statusActive}</Tag> : <Tag color="red">{a.statusInactive}</Tag>,
       },
     ],
-    [a, router]
+    [
+      a,
+      router,
+      isAdministrator,
+      permissionsLoading,
+      currentEmployeeCode,
+      deletingCode,
+      statusCode,
+      handleDelete,
+      handleStatusToggle,
+    ]
   );
 
   const UsersButtonBar = (
-    <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4">
-      <Space wrap>
-        {isAdministrator ? (
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            title={a.actionAddUser}
-            onClick={handleAddUser}
-            disabled={permissionsLoading}
-          >
-            {a.add}
-          </Button>
-        ) : null}
-        <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
-          {a.refresh}
+    <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
+      {isAdministrator && !permissionsLoading ? (
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => router.push('/administration/users/add')}
+        >
+          {a.add}
         </Button>
-      </Space>
+      ) : null}
+      <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
+        {a.refresh}
+      </Button>
     </div>
   );
 
-  const pageTitle =
-    users.length > 0 ? a.titleWithCount(users.length) : a.title;
+  const pageTitle = users.length > 0 ? a.titleWithCount(users.length) : a.title;
 
   return (
     <BasicPageLayout

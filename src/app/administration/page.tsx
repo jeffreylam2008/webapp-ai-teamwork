@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, Col, Row, Typography } from 'antd';
-import { IdcardOutlined, SettingOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
+import { IdcardOutlined, SettingOutlined, TeamOutlined, UploadOutlined, UserOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
@@ -29,6 +29,7 @@ export default function AdministrationHomePage() {
               href: '/administration',
               menuItems: [
                 { label: bc.users, href: '/administration/users' },
+                { label: bc.roles, href: '/administration/roles' },
                 { label: bc.settings, href: '/administration/settings' },
                 { label: bc.importExport, href: '/administration/master-data' },
                 { label: bc.system, href: '/administration/settings/system' },
@@ -54,6 +55,20 @@ export default function AdministrationHomePage() {
                 <UserOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
                 <Title level={3}>{t.usersTitle}</Title>
                 <Paragraph>{t.usersDesc}</Paragraph>
+              </div>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={8}>
+            <Card
+              hoverable
+              onClick={() => router.push('/administration/roles')}
+              className="cursor-pointer transition-all duration-200 hover:shadow-lg"
+            >
+              <div className="text-center">
+                <TeamOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />
+                <Title level={3}>{t.rolesTitle}</Title>
+                <Paragraph>{t.rolesDesc}</Paragraph>
               </div>
             </Card>
           </Col>

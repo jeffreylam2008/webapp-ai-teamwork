@@ -29,6 +29,7 @@ type MeResponse = {
   data?: string[];
   can_manage_access?: boolean;
   has_full_transaction_access?: boolean;
+  is_administrator?: boolean;
   role_code?: number;
 };
 
@@ -50,11 +51,13 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     setPermissions(list);
     const role = result?.role_code != null ? Number(result.role_code) : null;
     setRoleCode(Number.isFinite(role as number) ? (role as number) : null);
-    setIsAdministrator(isAdministratorRoleCode(role));
+    const isAdmin =
+      result?.is_administrator === true || isAdministratorRoleCode(role);
+    setIsAdministrator(isAdmin);
     setCanManageAccess(
       Boolean(result?.can_manage_access) ||
         Boolean(result?.has_full_transaction_access) ||
-        isAdministratorRoleCode(role)
+        isAdmin
     );
   }, []);
 

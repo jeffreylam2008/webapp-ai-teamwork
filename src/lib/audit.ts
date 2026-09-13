@@ -138,3 +138,64 @@ export async function logEmployeePasswordAction(params: {
   });
 }
 
+type EmployeeAdminResource = 'EMPLOYEE_STATUS' | 'EMPLOYEE';
+
+/**
+ * Audit employee admin actions (status enable/disable, delete).
+ * Call for both success and failure.
+ */
+export async function logEmployeeAdminAction(params: {
+  request: NextRequest;
+  action: Extract<AuditAction, 'EDIT' | 'DELETE'>;
+  resource: EmployeeAdminResource;
+  success: boolean;
+  statusCode: number;
+  reason?: string;
+  targetEmployeeCode?: string;
+  targetUid?: number | null;
+  targetUsername?: string;
+  details?: Record<string, unknown>;
+}) {
+  const {
+    request,
+    action,
+    resource,
+    success,
+    statusCode,
+    reason,
+    targetEmployeeCode,
+    targetUid,
+    targetUsername,
+    details,
+  } = params;
+  const user = await getAuditUser(request);
+  const headerCtx = getUserFromRequest(request);
+  const userId = user ? String(user.uid) : headerCtx.userId || 'anonymous';
+  const username = user ? user.username : headerCtx.username || 'anonymous';
+  const editorEmployeeCode =
+    user?.employee_code != null ? String(user.employee_code).trim() : undefined;
+  const targetCode = targetEmployeeCode != null ? String(targetEmployeeCode).trim() : '';
+
+  userActionLogger.log({
+    userId,
+    username,
+    action,
+    resource,
+    resourceId: targetCode || undefined,
+    statusCode,
+    details: {
+      success,
+      reason: reason || undefined,
+      target_employee_code: targetCode || undefined,
+      target_uid: targetUid ?? undefined,
+      target_username: targetUsername || undefined,
+      editor_employee_code: editorEmployeeCode,
+      ...details,
+    },
+    ipAddress: getRequestIp(request) ?? headerCtx.ipAddress,
+    userAgent: getRequestUserAgent(request) ?? headerCtx.userAgent,
+    method: request.method,
+    path: new URL(request.url).pathname,
+  });
+}
+

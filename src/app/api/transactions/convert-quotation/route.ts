@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     await ensurePrefixRefColumn();
     const body = await request.json();
     const { quotationCode } = body;
-    
+
     if (!quotationCode) {
       return NextResponse.json(
         { success: false, error: 'Quotation code is required' },
@@ -22,11 +22,7 @@ export async function POST(request: NextRequest) {
 
     console.log('[API] Converting quotation to Sales Order (draft):', quotationCode);
 
-    // Start transaction
-    await dbService.query('START TRANSACTION');
-
-    try {
-      // Check if quotation exists and is not already converted
+    const result = await dbService.withTransaction(async () => {
       const quotationCheck = await dbService.query(
         `SELECT trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code, 
                 total, employee_code, remark, create_date, valid_until_date,
@@ -38,47 +34,38 @@ export async function POST(request: NextRequest) {
       );
 
       if (!quotationCheck.data || quotationCheck.data.length === 0) {
-        await dbService.query('ROLLBACK');
-        return NextResponse.json(
-          { success: false, error: 'Quotation not found' },
-          { status: 404 }
-        );
+        return { ok: false as const, status: 404, error: 'Quotation not found' };
       }
 
       const quotation = quotationCheck.data[0];
 
-      // Check if already converted
       if (quotation.is_convert) {
-        await dbService.query('ROLLBACK');
-        return NextResponse.json(
-          { success: false, error: 'Quotation has already been converted to Sales Order' },
-          { status: 400 }
-        );
+        return {
+          ok: false as const,
+          status: 400,
+          error: 'Quotation has already been converted to Sales Order',
+        };
       }
 
-      // Generate new Sales Order (SO) transaction code
       const suffix = getCurrentSuffix();
       const sessionId = `convert_${Date.now()}_${generateSessionId()}`;
-      
+
       const orderNumberResult = await TransactionGeneratorMiddleware.generateNext({
         prefix: PREFIX_REF.SO,
         suffix: suffix,
         sessionId: sessionId,
       });
-      
+
       if (!orderNumberResult.success || !orderNumberResult.transactionCode) {
-        await dbService.query('ROLLBACK');
-        const genErr = !orderNumberResult.success ? orderNumberResult.error : 'Failed to generate Sales Order number';
-        return NextResponse.json(
-          { success: false, error: genErr },
-          { status: 500 }
-        );
+        const genErr = !orderNumberResult.success
+          ? orderNumberResult.error
+          : 'Failed to generate Sales Order number';
+        return { ok: false as const, status: 500, error: genErr || 'Failed to generate Sales Order number' };
       }
 
       const orderCode = orderNumberResult.transactionCode;
       console.log('[API] Generated Sales Order code:', orderCode);
 
-      // Get quotation details
       const quotationDetails = await dbService.query(
         `SELECT item_code, eng_name, chi_name, qty, unit, price, discount
          FROM t_transaction_d
@@ -86,7 +73,6 @@ export async function POST(request: NextRequest) {
         [quotationCode]
       );
 
-      // Get quotation payment totals
       const quotationPaymentTotals = await dbService.query(
         `SELECT pm_code, total
          FROM t_transaction_t
@@ -94,7 +80,6 @@ export async function POST(request: NextRequest) {
         [quotationCode]
       );
 
-      // Insert Sales Order (SO) header as draft (is_settle = 0)
       await dbService.query(
         `INSERT INTO t_transaction_h (
           trans_code, prefix, prefix_ref, cust_code, refer_code, shop_code,
@@ -111,11 +96,10 @@ export async function POST(request: NextRequest) {
           quotation.total,
           quotation.employee_code,
           quotation.remark,
-          quotationCode
+          quotationCode,
         ]
       );
 
-      // Insert Sales Order details
       if (quotationDetails.data && quotationDetails.data.length > 0) {
         for (const detail of quotationDetails.data) {
           await dbService.query(
@@ -132,13 +116,12 @@ export async function POST(request: NextRequest) {
               detail.qty,
               detail.unit,
               detail.price,
-              detail.discount
+              detail.discount,
             ]
           );
         }
       }
 
-      // Insert Sales Order payment totals
       if (quotationPaymentTotals.data && quotationPaymentTotals.data.length > 0) {
         for (const payment of quotationPaymentTotals.data) {
           await dbService.query(
@@ -146,16 +129,11 @@ export async function POST(request: NextRequest) {
               trans_code, pm_code, total,
               create_date, modify_date
             ) VALUES (?, ?, ?, NOW(), NOW())`,
-            [
-              orderCode,
-              payment.pm_code,
-              payment.total
-            ]
+            [orderCode, payment.pm_code, payment.total]
           );
         }
       }
 
-      // Mark quotation as converted and update refer_code to Sales Order code for cross-reference
       await dbService.query(
         `UPDATE t_transaction_h 
          SET is_convert = 1, refer_code = ?, modify_date = NOW()
@@ -180,54 +158,46 @@ export async function POST(request: NextRequest) {
         detailQtyByItem: soHoldMap,
       });
 
-      // Commit transaction
-      await dbService.query('COMMIT');
+      return { ok: true as const, orderCode, sessionId };
+    });
 
-      // Commit the Sales Order transaction number
-      await dbService.query(
-        'UPDATE t_trans_num_generator SET status = "committed" WHERE session_id = ?',
-        [sessionId]
-      );
-
-      console.log('[API] Quotation converted successfully to Sales Order (draft):', orderCode);
-      void logTransactionAction({
-        request,
-        action: 'CONVERT',
-        transCode: quotationCode,
-        prefix: PREFIX_REF.QTA,
-        details: { convertedTo: orderCode },
-      });
-      void logTransactionAction({
-        request,
-        action: 'CREATE',
-        transCode: orderCode,
-        prefix: PREFIX_REF.SO,
-        details: { convertedFrom: quotationCode },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: 'Quotation converted to Sales Order (draft) successfully',
-        orderCode,
-        invoiceCode: orderCode
-      });
-
-    } catch (error: unknown) {
-      await dbService.query('ROLLBACK');
-      console.error('[API] Error converting quotation:', error);
-      const msg = error instanceof Error ? error.message : 'Failed to convert quotation to Sales Order';
-      return NextResponse.json(
-        { success: false, error: msg },
-        { status: 500 }
-      );
+    if (!result.ok) {
+      return NextResponse.json({ success: false, error: result.error }, { status: result.status });
     }
+
+    await dbService.query(
+      'UPDATE t_trans_num_generator SET status = "committed" WHERE session_id = ?',
+      [result.sessionId]
+    );
+
+    console.log(
+      '[API] Quotation converted successfully to Sales Order (draft):',
+      result.orderCode
+    );
+    void logTransactionAction({
+      request,
+      action: 'CONVERT',
+      transCode: quotationCode,
+      prefix: PREFIX_REF.QTA,
+      details: { convertedTo: result.orderCode },
+    });
+    void logTransactionAction({
+      request,
+      action: 'CREATE',
+      transCode: result.orderCode,
+      prefix: PREFIX_REF.SO,
+      details: { convertedFrom: quotationCode },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: 'Quotation converted to Sales Order (draft) successfully',
+      orderCode: result.orderCode,
+      invoiceCode: result.orderCode,
+    });
   } catch (error: unknown) {
     console.error('[API] Error in convert-quotation endpoint:', error);
     const msg = error instanceof Error ? error.message : 'Internal server error';
-    return NextResponse.json(
-      { success: false, error: msg },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
-

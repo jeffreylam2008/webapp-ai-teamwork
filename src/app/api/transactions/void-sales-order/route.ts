@@ -65,15 +65,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbService.query('START TRANSACTION');
-    await dbService.query(
-      `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
-       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
-      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
-    );
-    await clearSalesOrderWarehouseStageHold(transCode);
-    await rollbackQuotationIfSalesOrderFromConversion(transCode);
-    await dbService.query('COMMIT');
+    await dbService.withTransaction(async () => {
+      await dbService.query(
+        `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
+         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
+        [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
+      );
+      await clearSalesOrderWarehouseStageHold(transCode);
+      await rollbackQuotationIfSalesOrderFromConversion(transCode);
+    });
 
     void logTransactionAction({
       request,
@@ -88,11 +88,6 @@ export async function POST(request: NextRequest) {
       transCode,
     });
   } catch (err) {
-    try {
-      await dbService.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
     const msg = err instanceof Error ? err.message : 'Database error';
     console.error('[void-sales-order]', err);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });

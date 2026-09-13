@@ -70,6 +70,8 @@ export type HubPagesTexts = {
     description: string;
     usersTitle: string;
     usersDesc: string;
+    rolesTitle: string;
+    rolesDesc: string;
     settingsTitle: string;
     settingsDesc: string;
     importTitle: string;
@@ -164,6 +166,8 @@ const EN: HubPagesTexts = {
     title: 'Administration',
     description: 'Manage users, settings, and master data import/export',
     usersTitle: 'Users',
+    rolesTitle: 'Role templates',
+    rolesDesc: 'Create and edit role default permissions.',
     usersDesc: 'Manage user access control.',
     settingsTitle: 'Settings',
     settingsDesc: 'Configure districts, prefixes, payment methods, payment terms, and shops.',
@@ -259,6 +263,8 @@ const ZH_HANT: HubPagesTexts = {
     title: '系統管理',
     description: '管理使用者、設定與主檔匯入／匯出',
     usersTitle: '用戶',
+    rolesTitle: '角色範本',
+    rolesDesc: '建立與編輯角色預設權限。',
     usersDesc: '管理用戶與存取權限。',
     settingsTitle: '設定',
     settingsDesc: '設定地區、前綴、付款方式、付款條款與店舖等。',

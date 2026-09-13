@@ -423,8 +423,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    await dbService.query('START TRANSACTION');
-
+    await dbService.withTransaction(async () => {
     let headerRow = pickRow(hMap, normalizedHeader);
     if (hasCol(hMap, 'modify_date') && existsCnt > 0) {
       headerRow = { ...headerRow, [hMap.get('modify_date')!]: formatSqlDateTime(new Date()) };
@@ -547,15 +546,13 @@ export async function PUT(request: NextRequest) {
       await syncPurchaseOrderSettlementFromGrns(transCode);
     }
 
-    await dbService.query('COMMIT');
+    });
 
-    const prefixKey = hMap.get('prefix');
-    const prefixVal = prefixKey ? headerRow[prefixKey] : undefined;
     void logTransactionAction({
       request,
       action: existsCnt > 0 ? 'EDIT' : 'CREATE',
       transCode,
-      prefix: typeof prefixVal === 'string' ? prefixVal : undefined,
+      prefix: effectivePrefix || undefined,
       details: {
         lineItems: detailsProvided ? detailsData.length : undefined,
         lineItemsUnchanged: !detailsProvided,
@@ -566,11 +563,6 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({ success: true, transCode });
   } catch (err) {
-    try {
-      await dbService.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
     const msg = err instanceof Error ? err.message : 'Database error';
     console.error('[transactions/update]', err);
     if (msg.startsWith('Insufficient warehouse stock')) {

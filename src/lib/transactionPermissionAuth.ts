@@ -1,10 +1,15 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { FUNCTION_PERMISSION_ROWS } from '@/config/transactionPermissions';
+import {
+  FUNCTION_PERMISSION_ROWS,
+  getInvoicePermissionKeys,
+} from '@/config/transactionPermissions';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken, type AuthUser } from '@/lib/authUtils';
 import { accessRowsToPermissionKeys, type EmployeeAccessRow } from '@/lib/employeeAccess';
 import { PREFIX_REF, normalizeToPrefixRef } from '@/lib/prefixRef';
+import { getShopScopeFromAuth } from '@/lib/shopScope';
+import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
 
 export type TransactionPermissionAction = 'view' | 'create' | 'edit' | 'delete';
 
@@ -102,7 +107,7 @@ export async function loadPermissionKeysForUser(
   return new Set(accessRowsToPermissionKeys(rows));
 }
 
-type AuthOk = { ok: true; user: AuthUser; keys: Set<string> };
+type AuthOk = { ok: true; user: AuthUser; keys: Set<string>; shopCode: string };
 type AuthFail = { ok: false; response: NextResponse };
 
 export async function getAuthenticatedPermissionKeys(request: NextRequest): Promise<AuthOk | AuthFail> {
@@ -119,9 +124,9 @@ export async function getAuthenticatedPermissionKeys(request: NextRequest): Prom
   }
 
   const employeeCode = String(auth.user.employee_code ?? '').trim();
-  const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || null;
-  const keys = await loadPermissionKeysForUser(employeeCode, shopCode);
-  return { ok: true, user: auth.user, keys };
+  const shopCode = getShopScopeFromAuth(auth.user);
+  const keys = await loadPermissionKeysForUser(employeeCode, shopCode || null);
+  return { ok: true, user: auth.user, keys, shopCode };
 }
 
 export function forbiddenResponse(message = 'You do not have permission for this action') {
@@ -136,4 +141,51 @@ export function assertDbPrefixPermission(
   const key = permissionKeyForDbPrefix(prefix, action);
   if (!key) return true;
   return keys.has(key);
+}
+
+/** Invoice (INV) permissions depend on standard vs monthly subtype. */
+export function assertInvoiceSubtypePermission(
+  keys: Set<string>,
+  invoiceSubtype: string | null | undefined,
+  action: TransactionPermissionAction
+): boolean {
+  const perm = getInvoicePermissionKeys(invoiceSubtype);
+  const key =
+    action === 'view'
+      ? perm.view
+      : action === 'create'
+        ? perm.create
+        : action === 'edit'
+          ? perm.edit
+          : perm.delete;
+  return keys.has(key);
+}
+
+/**
+ * Permission check for a transaction prefix, with INV subtype awareness.
+ */
+export function assertTransactionPermission(
+  keys: Set<string>,
+  prefix: string,
+  action: TransactionPermissionAction,
+  options?: { invoiceSubtype?: string | null }
+): boolean {
+  const ref = normalizeToPrefixRef(prefix);
+  if (ref === PREFIX_REF.INV || String(prefix || '').trim().toUpperCase() === 'INV') {
+    return assertInvoiceSubtypePermission(keys, options?.invoiceSubtype, action);
+  }
+  return assertDbPrefixPermission(keys, prefix, action);
+}
+
+/** True if user can view at least one invoice type (standard or monthly). */
+export function canViewAnyInvoice(keys: Set<string>): boolean {
+  return keys.has('view_invoice') || keys.has('view_monthly_invoice');
+}
+
+export function invoiceFunctionIdForSubtype(invoiceSubtype: string | null | undefined): string {
+  return isMonthlyInvoiceSubtype(invoiceSubtype) ? 'monthly_invoice' : 'invoice';
+}
+
+export function getPermissionRowById(id: string) {
+  return FUNCTION_PERMISSION_ROWS.find((r) => r.id === id);
 }

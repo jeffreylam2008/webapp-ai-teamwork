@@ -3,6 +3,7 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { generateDueRecurringMonthlyInvoices } from '@/lib/generateRecurringMonthlyInvoices';
 import { PREFIX_REF } from '@/lib/prefixRef';
+import { getShopScopeFromAuth, shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * POST /api/transactions/generate-recurring-monthly
@@ -18,8 +19,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   try {
-    const generated = await generateDueRecurringMonthlyInvoices();
+    const generated = await generateDueRecurringMonthlyInvoices({ shopCode: scopeShop });
 
     void logTransactionAction({
       request,

@@ -4,13 +4,14 @@ import { logTimestamp } from '@/lib/datetime';
 import {
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
-import { PENDING_SO_FOR_DN_COUNT_SQL } from '@/lib/pendingDeliverySalesOrders';
+import { pendingSoForDnCountQuery } from '@/lib/pendingDeliverySalesOrders';
 import { canAccessWarehouseStockMenu } from '@/config/transactionPermissions';
 import {
   PREFIX_REF,
   bindEqualsStoredPrefixRef,
   sqlEqualsStoredPrefixRef,
 } from '@/lib/prefixRef';
+import { shopScopeRequiredResponse } from '@/lib/shopScope';
 
 const LINE_SALES_EXPR =
   'd.qty * d.price * (1 - COALESCE(d.discount, 0) / 100)';
@@ -33,14 +34,11 @@ export async function GET(request: NextRequest) {
   try {
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
 
     const keys = authResult.keys;
     const can = (key: string) => keys.has(key);
-    const shopCode = (
-      authResult.user.selected_shopcode ||
-      authResult.user.default_shopcode ||
-      ''
-    ).trim();
+    const shopCode = authResult.shopCode;
 
     const { start: monthStart, end: monthEnd } = monthBounds();
 
@@ -115,9 +113,10 @@ export async function GET(request: NextRequest) {
       userCount = Number(result.data?.[0]?.total || 0);
     }
 
-    // Warehouse pending: confirmed SO waiting for delivery note
+    // Warehouse pending: confirmed SO waiting for delivery note (this shop)
     if (canWarehouse || can('view_delivery_note') || canSalesOrder) {
-      const result = await dbService.query<{ c: number }>(PENDING_SO_FOR_DN_COUNT_SQL);
+      const countQ = pendingSoForDnCountQuery(shopCode);
+      const result = await dbService.query<{ c: number }>(countQ.sql, countQ.params);
       warehousePending = Number(result.data?.[0]?.c || 0);
     }
 

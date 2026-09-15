@@ -11,6 +11,7 @@ import {
   sqlEqualsStoredPrefixRef,
   sqlPrefixInList,
 } from '@/lib/prefixRef';
+import { shopScopeRequiredResponse } from '@/lib/shopScope';
 
 const LINE_SALES_EXPR =
   'd.qty * d.price * (1 - COALESCE(d.discount, 0) / 100)';
@@ -219,11 +220,13 @@ export async function GET(request: NextRequest) {
     if (!authResult.keys.has('view_sales_report')) {
       return forbiddenResponse();
     }
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
 
     const { searchParams } = new URL(request.url);
     const startDate = (searchParams.get('start_date') || '').trim();
     const endDate = (searchParams.get('end_date') || '').trim();
-    const shopCode = (searchParams.get('shop_code') || '').trim();
+    // Always force JWT shop — ignore client shop_code to prevent cross-shop reads.
+    const shopCode = authResult.shopCode;
     const groupBy = parseGroupBy(searchParams.get('group_by') || 'invoice');
     const isExport = searchParams.get('export') === '1';
     const page = isExport ? 1 : Math.max(1, parseInt(searchParams.get('page') || '1', 10));

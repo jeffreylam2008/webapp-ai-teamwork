@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  assertDbPrefixPermission,
+  assertTransactionPermission,
   forbiddenResponse,
   loadPermissionKeysForUser,
 } from '@/lib/transactionPermissionAuth';
 import dbService from '@/lib/database';
 import { formatSqlDateTime } from '@/lib/datetime';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
+import {
+  getShopScopeFromAuth,
+  isTransactionInShopScope,
+  shopScopeRequiredResponse,
+  transactionOutOfShopScopeResponse,
+} from '@/lib/shopScope';
 import { logTransactionAction } from '@/lib/audit';
 import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { markSalesOrderInvoiced } from '@/lib/salesOrderInvoiceConversion';
@@ -243,6 +249,9 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   let body: {
     transCode?: string;
     headerData?: Record<string, unknown>;
@@ -287,11 +296,19 @@ export async function PUT(request: NextRequest) {
       is_settle: number | null;
       wh_code: string | null;
       shop_code: string | null;
+      invoice_subtype: string | null;
     }>(
-      'SELECT prefix, prefix_ref, is_void, is_settle, wh_code, shop_code FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
+      'SELECT prefix, prefix_ref, is_void, is_settle, wh_code, shop_code, invoice_subtype FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
       [transCode]
     );
     const prevH = prevHeaderRes.data?.[0];
+    if (existsCnt > 0 && !isTransactionInShopScope(prevH?.shop_code, scopeShop)) {
+      return transactionOutOfShopScopeResponse();
+    }
+
+    // Always bind document to the logged-in shop (prevents cross-shop create/edit).
+    headerRaw.shop_code = scopeShop;
+
     const prevDetailsRes = await dbService.query<{ item_code: string; qty: number }>(
       'SELECT item_code, qty FROM t_transaction_d WHERE trans_code = ?',
       [transCode]
@@ -354,13 +371,18 @@ export async function PUT(request: NextRequest) {
     }
 
     const employeeCode = String(auth.user.employee_code ?? '').trim();
-    const shopCode = (auth.user.selected_shopcode || auth.user.default_shopcode || '').trim() || null;
+    const shopCode = scopeShop;
     const permKeys = await loadPermissionKeysForUser(employeeCode, shopCode);
     const permAction =
       effectiveIsVoid === 1 ? 'delete' : existsCnt > 0 ? 'edit' : 'create';
     if (
       effectivePrefix &&
-      !assertDbPrefixPermission(permKeys, effectivePrefix, permAction)
+      !assertTransactionPermission(permKeys, effectivePrefix, permAction, {
+        invoiceSubtype:
+          (normalizedHeader.invoice_subtype as string | undefined) ??
+          (headerRaw.invoice_subtype as string | undefined) ??
+          prevH?.invoice_subtype,
+      })
     ) {
       return forbiddenResponse('You do not have permission for this transaction action');
     }

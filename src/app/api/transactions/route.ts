@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
 import {
+  assertInvoiceSubtypePermission,
   filterDbPrefixesByView,
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
+import { shopScopeRequiredResponse, shopScopeSql } from '@/lib/shopScope';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
 import {
@@ -14,6 +16,7 @@ import {
   normalizeToPrefixRef,
   effectivePrefixRef,
 } from '@/lib/prefixRef';
+import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
 
 /**
  * GET /api/transactions?prefix=_SO|_INV|SO|INV|...&page=1&pageSize=20&start_date=&end_date=&search=
@@ -23,6 +26,7 @@ export async function GET(request: NextRequest) {
   try {
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
 
     const { searchParams } = new URL(request.url);
     const prefixParam = searchParams.get('prefix') || searchParams.get('prefix_ref') || '';
@@ -51,7 +55,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const prefixes = filterDbPrefixesByView(authResult.keys, requestedPrefixes);
+    // Monthly invoices share INV prefix but use a separate access-control function.
+    const monthlyList =
+      requestedPrefixes.includes(PREFIX_REF.INV) && isMonthlyInvoiceSubtype(invoiceSubtypeParam);
+    const standardInvoiceList =
+      requestedPrefixes.includes(PREFIX_REF.INV) &&
+      invoiceSubtypeParam.trim().toLowerCase() === 'standard';
+
+    let prefixes = filterDbPrefixesByView(authResult.keys, requestedPrefixes);
+    if (monthlyList) {
+      if (!assertInvoiceSubtypePermission(authResult.keys, 'monthly', 'view')) {
+        prefixes = prefixes.filter((p) => p !== PREFIX_REF.INV);
+      } else if (!prefixes.includes(PREFIX_REF.INV)) {
+        prefixes = [...prefixes, PREFIX_REF.INV];
+      }
+    } else if (standardInvoiceList) {
+      if (!assertInvoiceSubtypePermission(authResult.keys, 'standard', 'view')) {
+        prefixes = prefixes.filter((p) => p !== PREFIX_REF.INV);
+      }
+    }
+
     if (prefixes.length === 0) {
       return NextResponse.json({
         success: true,
@@ -72,6 +95,11 @@ export async function GET(request: NextRequest) {
     const params: (string | number)[] = [...match.params];
     let whereClause = match.sql;
     const countParams: (string | number)[] = [...match.params];
+
+    const shopFilter = shopScopeSql(authResult.shopCode, 'h');
+    whereClause += shopFilter.sql;
+    params.push(...shopFilter.params);
+    countParams.push(...shopFilter.params);
 
     if (startDate) {
       whereClause += ' AND DATE(h.create_date) >= ?';

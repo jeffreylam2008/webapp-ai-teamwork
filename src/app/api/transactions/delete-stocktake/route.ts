@@ -7,6 +7,7 @@ import {
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
 import { PREFIX_REF, matchesPrefixRef } from '@/lib/prefixRef';
+import { shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * DELETE /api/transactions/delete-stocktake
@@ -20,6 +21,7 @@ export async function DELETE(request: NextRequest) {
   try {
     const authResult = await getAuthenticatedPermissionKeys(request);
     if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
     if (!assertDbPrefixPermission(authResult.keys, PREFIX_REF.ST, 'delete')) {
       return forbiddenResponse('You do not have permission to delete stocktake');
     }
@@ -40,8 +42,8 @@ export async function DELETE(request: NextRequest) {
         prefix_ref?: string | null;
         shop_code?: string;
       }>(
-        'SELECT prefix, prefix_ref, shop_code FROM t_transaction_h WHERE trans_code = ?',
-        [transCode]
+        'SELECT prefix, prefix_ref, shop_code FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?',
+        [transCode, authResult.shopCode]
       );
 
       const header = headerResult.data?.[0];
@@ -86,7 +88,10 @@ export async function DELETE(request: NextRequest) {
       }
 
       await dbService.query('DELETE FROM t_transaction_d WHERE trans_code = ?', [transCode]);
-      await dbService.query('DELETE FROM t_transaction_h WHERE trans_code = ?', [transCode]);
+      await dbService.query(
+        'DELETE FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?',
+        [transCode, authResult.shopCode]
+      );
     });
 
     void logTransactionAction({

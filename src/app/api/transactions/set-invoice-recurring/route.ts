@@ -6,6 +6,16 @@ import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
 import { generateDueRecurringMonthlyInvoices } from '@/lib/generateRecurringMonthlyInvoices';
+import {
+  assertTransCodeInShopScope,
+  getShopScopeFromAuth,
+  shopScopeRequiredResponse,
+} from '@/lib/shopScope';
+import {
+  assertInvoiceSubtypePermission,
+  forbiddenResponse,
+  loadPermissionKeysForUser,
+} from '@/lib/transactionPermissionAuth';
 
 /**
  * POST /api/transactions/set-invoice-recurring
@@ -23,6 +33,9 @@ export async function POST(request: NextRequest) {
   if (!auth.success || !auth.user) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
+
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
 
   let body: { transCode?: string; is_recurring?: unknown };
   try {
@@ -45,6 +58,9 @@ export async function POST(request: NextRequest) {
   try {
     await ensureInvoiceSubtypeColumns();
 
+    const scopeErr = await assertTransCodeInShopScope(transCode, scopeShop);
+    if (scopeErr) return scopeErr;
+
     const hdr = await dbService.query<{
       prefix: string | null;
       prefix_ref: string | null;
@@ -54,8 +70,8 @@ export async function POST(request: NextRequest) {
       billing_period_to: string | Date | null;
     }>(
       `SELECT prefix, prefix_ref, is_void, invoice_subtype, billing_period_from, billing_period_to
-       FROM t_transaction_h WHERE trans_code = ? LIMIT 1`,
-      [transCode]
+       FROM t_transaction_h WHERE trans_code = ? AND shop_code = ? LIMIT 1`,
+      [transCode, scopeShop]
     );
 
     const row = hdr.data?.[0];
@@ -71,6 +87,13 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const employeeCode = String(auth.user.employee_code ?? '').trim();
+    const permKeys = await loadPermissionKeysForUser(employeeCode, scopeShop);
+    if (!assertInvoiceSubtypePermission(permKeys, 'monthly', 'edit')) {
+      return forbiddenResponse('You do not have permission to edit monthly invoices');
+    }
+
     if (Number(row.is_void ?? 0) === 1) {
       return NextResponse.json(
         { success: false, error: 'Cannot set recurrence on a void invoice' },
@@ -93,7 +116,10 @@ export async function POST(request: NextRequest) {
 
     let generated: Awaited<ReturnType<typeof generateDueRecurringMonthlyInvoices>> = [];
     if (isRecurring === 1) {
-      generated = await generateDueRecurringMonthlyInvoices({ onlyTransCode: transCode });
+      generated = await generateDueRecurringMonthlyInvoices({
+        onlyTransCode: transCode,
+        shopCode: scopeShop,
+      });
     }
 
     void logTransactionAction({

@@ -151,9 +151,9 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     });
   }, [pageSizeDefault, pageSizeMax]);
 
-  // Load transactions after auth is ready (only once)
+  // Load transactions after auth + permissions are ready (only once)
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || permissionsLoading) return;
     if (!hasInitialFetch.current && !isMounted.current) {
       isMounted.current = true;
       hasInitialFetch.current = true;
@@ -179,6 +179,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
     }
   }, [
     authLoading,
+    permissionsLoading,
     config.isMonthly,
     fetchTransactions,
     messageApi,
@@ -419,12 +420,12 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
         fixed: 'left' as const,
         render: (_: unknown, record: InvoiceTransaction) => {
           const id = (record.transaction_id || '').trim();
-          const canClone = record.transaction_type === 'INV' && can('create_invoice');
+          const canClone = record.transaction_type === 'INV' && can(config.permissions.create);
           const canVoid =
             record.transaction_type === 'INV' &&
             record.status !== 'Void' &&
             record.status !== 'Settled' &&
-            can('void_invoice');
+            can(config.permissions.delete);
           return (
           <div className="flex flex-row items-center justify-start gap-2">
             <Tooltip title={t.actions.viewInvoice}>
@@ -548,7 +549,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
                     <Switch
                       checked={checked}
                       loading={recurringSavingId === id}
-                      disabled={isVoid || !can('create_invoice') || !id}
+                      disabled={isVoid || !can(config.permissions.create) || !id}
                       onChange={(value) => void handleToggleRecurring(record, value)}
                       size="small"
                     />
@@ -671,7 +672,7 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
   // Invoices Button Bar Component
   const InvoicesButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
-      {can('create_invoice') && (
+      {can(config.permissions.create) && (
       <Button 
         icon={<PlusOutlined />}
         type="primary"
@@ -711,9 +712,9 @@ export default function InvoicesListPageContent({ mode }: { mode: InvoiceModuleM
       title={config.isMonthly ? t.listPage.monthlyTitle : t.listPage.title}
       description={config.isMonthly ? t.listPage.monthlyDescription : t.listPage.description}
     >
-      {permissionsLoading ? (
+      {authLoading || permissionsLoading ? (
         <PageLoadingCenter />
-      ) : !can('view_invoice') ? (
+      ) : !can(config.permissions.view) ? (
         <div className="px-8 py-6 text-gray-600">{t.listPage.noPermission}</div>
       ) : (
       <>

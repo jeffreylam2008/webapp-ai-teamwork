@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import {
+  assertDbPrefixPermission,
+  forbiddenResponse,
+  getAuthenticatedPermissionKeys,
+} from '@/lib/transactionPermissionAuth';
+import { assertTransCodeInShopScope, shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * DELETE /api/transactions/delete-po
@@ -9,6 +15,13 @@ import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStore
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await getAuthenticatedPermissionKeys(request);
+    if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
+    if (!assertDbPrefixPermission(authResult.keys, PREFIX_REF.PO, 'delete')) {
+      return forbiddenResponse('You do not have permission to delete purchase orders');
+    }
+
     const body = await request.json();
     const transCode = (body?.transCode || '').toString().trim();
 
@@ -16,14 +29,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'transCode is required' }, { status: 400 });
     }
 
+    const scopeErr = await assertTransCodeInShopScope(transCode, authResult.shopCode);
+    if (scopeErr) return scopeErr;
+
     const headerResult = await dbService.query<{
       trans_code: string;
       prefix: string;
       prefix_ref: string | null;
       is_settle: number | null;
     }>(
-      'SELECT trans_code, prefix, prefix_ref, is_settle FROM t_transaction_h WHERE trans_code = ?',
-      [transCode]
+      'SELECT trans_code, prefix, prefix_ref, is_settle FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?',
+      [transCode, authResult.shopCode]
     );
 
     const header = headerResult.data?.[0];
@@ -50,9 +66,10 @@ export async function DELETE(request: NextRequest) {
        FROM t_transaction_h h
        WHERE ${sqlEqualsStoredPrefixRef('h')}
          AND refer_code = ?
+         AND h.shop_code = ?
          AND (is_void IS NULL OR is_void = 0)
        LIMIT 1`,
-      [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), transCode]
+      [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), transCode, authResult.shopCode]
     );
     if ((grnCheck.data?.length || 0) > 0) {
       return NextResponse.json(
@@ -63,7 +80,10 @@ export async function DELETE(request: NextRequest) {
 
     await dbService.query('DELETE FROM t_transaction_t WHERE trans_code = ?', [transCode]);
     await dbService.query('DELETE FROM t_transaction_d WHERE trans_code = ?', [transCode]);
-    const delH = await dbService.query('DELETE FROM t_transaction_h WHERE trans_code = ?', [transCode]);
+    const delH = await dbService.query(
+      'DELETE FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?',
+      [transCode, authResult.shopCode]
+    );
 
     if (!delH.affectedRows || delH.affectedRows < 1) {
       return NextResponse.json({ success: false, error: 'Failed to delete PO header' }, { status: 500 });

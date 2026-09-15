@@ -50,7 +50,13 @@ export const EMPLOYEE_ROLES: EmployeeRoleDefinition[] = [
   },
 ];
 
-const SALES_FUNCTION_IDS = new Set(['invoice', 'sales_order', 'quotation', 'sales_report']);
+const SALES_FUNCTION_IDS = new Set([
+  'invoice',
+  'monthly_invoice',
+  'sales_order',
+  'quotation',
+  'sales_report',
+]);
 const WAREHOUSE_FUNCTION_IDS = new Set([
   'grn',
   'stocktake',

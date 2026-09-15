@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import { getAuthenticatedPermissionKeys } from '@/lib/transactionPermissionAuth';
+import { assertTransCodeInShopScope, shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * GET /api/transactions/po-received/[poCode]
@@ -10,6 +12,10 @@ export async function GET(
   { params }: { params: Promise<{ poCode: string }> }
 ) {
   try {
+    const authResult = await getAuthenticatedPermissionKeys(request);
+    if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
+
     const { poCode } = await params;
     if (!poCode) {
       return NextResponse.json(
@@ -18,13 +24,17 @@ export async function GET(
       );
     }
 
+    const scopeErr = await assertTransCodeInShopScope(poCode, authResult.shopCode);
+    if (scopeErr) return scopeErr;
+
     const grnHeaders = await dbService.query<{ trans_code: string }>(
       `SELECT trans_code FROM t_transaction_h h
        WHERE ${sqlEqualsStoredPrefixRef('h')}
          AND refer_code = ?
+         AND h.shop_code = ?
          AND (is_void = 0 OR is_void IS NULL)
        ORDER BY create_date ASC`,
-      [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), poCode]
+      [...bindEqualsStoredPrefixRef(PREFIX_REF.GRN), poCode, authResult.shopCode]
     );
     const grnCodes = (grnHeaders.data || []).map((r) => r.trans_code);
     const grnCount = grnCodes.length;

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import {
-  PENDING_SO_FOR_DN_COUNT_SQL,
-  PENDING_SO_FOR_DN_LIST_SQL,
+  pendingSoForDnCountQuery,
+  pendingSoForDnListQuery,
 } from '@/lib/pendingDeliverySalesOrders';
+import { getShopScopeFromAuth, shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * GET /api/delivery-notes/sales-orders
@@ -21,23 +22,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   try {
     const countOnly = request.nextUrl.searchParams.get('countOnly') === '1';
 
-    const countResult = await dbService.query<{ c: number }>(PENDING_SO_FOR_DN_COUNT_SQL);
+    const countQ = pendingSoForDnCountQuery(scopeShop);
+    const countResult = await dbService.query<{ c: number }>(countQ.sql, countQ.params);
     const pending_count = Number((countResult.data?.[0] as { c?: unknown })?.c ?? 0) || 0;
 
     if (countOnly) {
       return NextResponse.json({ success: true, pending_count });
     }
 
+    const listQ = pendingSoForDnListQuery(scopeShop);
     const result = await dbService.query<{
       transaction_id: string;
       transaction_date: string | null;
       customer_name: string | null;
       is_settle: number | null;
       is_void: number | null;
-    }>(PENDING_SO_FOR_DN_LIST_SQL);
+    }>(listQ.sql, listQ.params);
 
     const data = (result.data || [])
       .map((row) => {
@@ -53,10 +59,10 @@ export async function GET(request: NextRequest) {
       .filter((row) => row.transaction_id);
 
     return NextResponse.json({ success: true, data, pending_count });
-  } catch (err) {
-    console.error('[delivery-notes/sales-orders GET]', err);
+  } catch (error) {
+    console.error('[API] delivery-notes/sales-orders error:', error);
     return NextResponse.json(
-      { success: false, error: err instanceof Error ? err.message : 'Failed to load sales orders' },
+      { success: false, error: 'Failed to load pending sales orders' },
       { status: 500 }
     );
   }

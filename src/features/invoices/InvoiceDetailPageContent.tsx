@@ -21,6 +21,7 @@ import {
 } from '@/components/transactionDetailInfo';
 import { formatCurrency } from '@/utils/formatCurrency';
 import { isMonthlyInvoiceSubtype, normalizeInvoiceSubtype } from '@/config/invoiceSubtypes';
+import { getInvoicePermissionKeys } from '@/config/transactionPermissions';
 import {
   getInvoiceModuleConfig,
   invoicePrintPath,
@@ -89,8 +90,8 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getInvoiceTexts(lang), [lang]);
-  const { token } = useAuth();
-  const { can } = usePermissions();
+  const { token, loading: authLoading } = useAuth();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { modal, message: messageApi } = App.useApp();
 
   const transCode = String((params?.transCode as string | undefined) || '').trim();
@@ -106,6 +107,9 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
     if (!transCode) {
       setError(t.detailPage.notFoundDetail || 'Missing invoice code');
       setLoading(false);
+      return;
+    }
+    if (authLoading || permissionsLoading || !token) {
       return;
     }
     setLoading(true);
@@ -130,7 +134,7 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
     } finally {
       setLoading(false);
     }
-  }, [t, token, transCode]);
+  }, [authLoading, permissionsLoading, t, token, transCode]);
 
   useEffect(() => {
     void load();
@@ -228,7 +232,10 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
       <Button onClick={() => void load()} disabled={loading}>
         {t.detailPage.refresh}
       </Button>
-      {header && header.is_void !== 1 && header.is_settle !== 1 && can('void_invoice') && (
+      {header &&
+        header.is_void !== 1 &&
+        header.is_settle !== 1 &&
+        can(getInvoicePermissionKeys(header.invoice_subtype).delete) && (
         <Button
           danger
           type="primary"
@@ -247,7 +254,7 @@ export default function InvoiceDetailPageContent({ mode }: { mode: InvoiceModule
   return (
     <BasicPageLayout breadcrumb={breadcrumb} buttonBar={buttonBar} title={pageTitle} description={t.detailPage.description}>
       <div className="px-8 py-6 bg-white">
-        {loading ? (
+        {authLoading || permissionsLoading || loading ? (
           <div className="flex justify-center items-center py-20">
             <Spin size="large" />
           </div>

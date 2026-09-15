@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
-import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import { PREFIX_REF, matchesPrefixRef } from '@/lib/prefixRef';
+import {
+  assertDbPrefixPermission,
+  forbiddenResponse,
+  getAuthenticatedPermissionKeys,
+} from '@/lib/transactionPermissionAuth';
+import { assertTransCodeInShopScope, shopScopeRequiredResponse } from '@/lib/shopScope';
 
 /**
  * DELETE /api/transactions/delete-quotation
@@ -9,6 +15,13 @@ import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStore
  */
 export async function DELETE(request: NextRequest) {
   try {
+    const authResult = await getAuthenticatedPermissionKeys(request);
+    if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
+    if (!assertDbPrefixPermission(authResult.keys, PREFIX_REF.QTA, 'delete')) {
+      return forbiddenResponse('You do not have permission to delete quotations');
+    }
+
     const body = await request.json();
     const transCode = (body?.transCode || '').toString().trim();
 
@@ -16,14 +29,17 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'transCode is required' }, { status: 400 });
     }
 
+    const scopeErr = await assertTransCodeInShopScope(transCode, authResult.shopCode);
+    if (scopeErr) return scopeErr;
+
     const headerResult = await dbService.query<{
       trans_code: string;
       prefix: string;
       prefix_ref: string | null;
       is_convert: number | null;
     }>(
-      `SELECT trans_code, prefix, prefix_ref, is_convert FROM t_transaction_h WHERE trans_code = ?`,
-      [transCode]
+      `SELECT trans_code, prefix, prefix_ref, is_convert FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?`,
+      [transCode, authResult.shopCode]
     );
 
     const header = headerResult.data?.[0];
@@ -50,7 +66,10 @@ export async function DELETE(request: NextRequest) {
 
     await dbService.query('DELETE FROM t_transaction_t WHERE trans_code = ?', [transCode]);
     await dbService.query('DELETE FROM t_transaction_d WHERE trans_code = ?', [transCode]);
-    const delH = await dbService.query('DELETE FROM t_transaction_h WHERE trans_code = ?', [transCode]);
+    const delH = await dbService.query(
+      'DELETE FROM t_transaction_h WHERE trans_code = ? AND shop_code = ?',
+      [transCode, authResult.shopCode]
+    );
 
     if (!delH.affectedRows || delH.affectedRows < 1) {
       return NextResponse.json(

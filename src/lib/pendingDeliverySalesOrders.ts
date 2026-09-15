@@ -13,12 +13,46 @@ export const PENDING_SO_FOR_DN_WHERE = `
   )
 `;
 
+export function pendingSoForDnCountQuery(shopCode: string): { sql: string; params: string[] } {
+  return {
+    sql: `
+      SELECT COUNT(*) AS c
+      FROM t_transaction_h so
+      WHERE ${PENDING_SO_FOR_DN_WHERE}
+        AND so.shop_code = ?
+    `,
+    params: [shopCode],
+  };
+}
+
+export function pendingSoForDnListQuery(shopCode: string): { sql: string; params: string[] } {
+  return {
+    sql: `
+      SELECT
+        so.trans_code AS transaction_id,
+        so.create_date AS transaction_date,
+        c.name AS customer_name,
+        so.is_settle,
+        so.is_void
+      FROM t_transaction_h so
+      LEFT JOIN t_customers c ON so.cust_code = c.cust_code
+      WHERE ${PENDING_SO_FOR_DN_WHERE}
+        AND so.shop_code = ?
+      ORDER BY so.create_date DESC
+      LIMIT 500
+    `,
+    params: [shopCode],
+  };
+}
+
+/** @deprecated Prefer pendingSoForDnCountQuery(shopCode) */
 export const PENDING_SO_FOR_DN_COUNT_SQL = `
   SELECT COUNT(*) AS c
   FROM t_transaction_h so
   WHERE ${PENDING_SO_FOR_DN_WHERE}
 `;
 
+/** @deprecated Prefer pendingSoForDnListQuery(shopCode) */
 export const PENDING_SO_FOR_DN_LIST_SQL = `
   SELECT
     so.trans_code AS transaction_id,

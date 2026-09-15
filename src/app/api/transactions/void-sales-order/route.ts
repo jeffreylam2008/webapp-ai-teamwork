@@ -6,6 +6,11 @@ import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStag
 import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
 import { PREFIX_REF, effectivePrefixRef, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
+import {
+  assertTransCodeInShopScope,
+  getShopScopeFromAuth,
+  shopScopeRequiredResponse,
+} from '@/lib/shopScope';
 
 /**
  * POST /api/transactions/void-sales-order
@@ -24,6 +29,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   let body: { transCode?: string };
   try {
     body = await request.json();
@@ -38,12 +46,18 @@ export async function POST(request: NextRequest) {
 
   try {
     await ensurePrefixRefColumn();
+    const scopeErr = await assertTransCodeInShopScope(transCode, scopeShop);
+    if (scopeErr) return scopeErr;
+
     const hdr = await dbService.query<{
       prefix: string | null;
       prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
-    }>('SELECT prefix, prefix_ref, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1', [transCode]);
+    }>(
+      'SELECT prefix, prefix_ref, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? AND shop_code = ? LIMIT 1',
+      [transCode, scopeShop]
+    );
 
     const row = hdr.data?.[0];
     if (!row) {
@@ -68,8 +82,8 @@ export async function POST(request: NextRequest) {
     await dbService.withTransaction(async () => {
       await dbService.query(
         `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
-         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
-        [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
+         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} AND shop_code = ?`,
+        [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO), scopeShop]
       );
       await clearSalesOrderWarehouseStageHold(transCode);
       await rollbackQuotationIfSalesOrderFromConversion(transCode);

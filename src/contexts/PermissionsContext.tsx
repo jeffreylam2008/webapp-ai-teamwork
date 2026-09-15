@@ -34,12 +34,13 @@ type MeResponse = {
 };
 
 export function PermissionsProvider({ children }: { children: React.ReactNode }) {
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, loading: authLoading } = useAuth();
   const [permissions, setPermissions] = useState<string[]>([]);
   const [canManageAccess, setCanManageAccess] = useState(false);
   const [isAdministrator, setIsAdministrator] = useState(false);
   const [roleCode, setRoleCode] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
 
   const can = useCallback(
     (key: string) => permissions.includes(key),
@@ -59,14 +60,20 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
         Boolean(result?.has_full_transaction_access) ||
         isAdmin
     );
+    setInitialized(true);
   }, []);
 
   const refetch = useCallback(() => {
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
     if (!token) {
       setPermissions([]);
       setCanManageAccess(false);
       setIsAdministrator(false);
       setRoleCode(null);
+      setInitialized(false);
       setLoading(false);
       return;
     }
@@ -76,13 +83,10 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
       .then((res) => res.json())
       .then((result: MeResponse) => applyMeResult(result))
       .catch(() => {
-        setPermissions([]);
-        setCanManageAccess(false);
-        setIsAdministrator(false);
-        setRoleCode(null);
+        // Keep prior permissions on transient failures to avoid unauthorized flash.
       })
       .finally(() => setLoading(false));
-  }, [token, applyMeResult]);
+  }, [token, authLoading, applyMeResult]);
 
   useEffect(() => {
     const onPermissionsUpdated = () => refetch();
@@ -91,11 +95,18 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
   }, [refetch]);
 
   useEffect(() => {
+    // Auth still resolving — stay in loading so pages don't flash "no permission".
+    if (authLoading) {
+      setLoading(true);
+      return;
+    }
+
     if (!isAuthenticated || !token) {
       setPermissions([]);
       setCanManageAccess(false);
       setIsAdministrator(false);
       setRoleCode(null);
+      setInitialized(false);
       setLoading(false);
       return;
     }
@@ -109,12 +120,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
         applyMeResult(result);
       })
       .catch(() => {
-        if (!cancelled) {
-          setPermissions([]);
-          setCanManageAccess(false);
-          setIsAdministrator(false);
-          setRoleCode(null);
-        }
+        // Keep prior permissions on transient failures to avoid unauthorized flash.
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -123,19 +129,29 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, token, applyMeResult]);
+  }, [authLoading, isAuthenticated, token, applyMeResult]);
+
+  const permissionsLoading = authLoading || loading || (isAuthenticated && !initialized);
 
   const value = useMemo(
     () => ({
       permissions,
-      loading,
+      loading: permissionsLoading,
       can,
       canManageAccess,
       isAdministrator,
       roleCode,
       refetch,
     }),
-    [permissions, loading, can, canManageAccess, isAdministrator, roleCode, refetch]
+    [
+      permissions,
+      permissionsLoading,
+      can,
+      canManageAccess,
+      isAdministrator,
+      roleCode,
+      refetch,
+    ]
   );
 
   return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;

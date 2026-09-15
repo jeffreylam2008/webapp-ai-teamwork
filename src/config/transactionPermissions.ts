@@ -1,4 +1,5 @@
 import { PREFIX_REF, normalizeToPrefixRef } from '@/lib/prefixRef';
+import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
 
 /**
  * Transaction function keys for access control.
@@ -16,10 +17,25 @@ export type FunctionPermissionRow = {
   viewOnly?: boolean;
 };
 
+export type InvoicePermissionKeys = {
+  view: string;
+  create: string;
+  edit: string;
+  delete: string;
+};
+
 /** One row in the permissions table: function name + keys for view, create, edit, delete/void */
 export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
   { id: 'po', label: 'Purchase Order', create: 'create_po', view: 'view_po', edit: 'edit_po', delete: 'void_po' },
   { id: 'invoice', label: 'Invoice', create: 'create_invoice', view: 'view_invoice', edit: 'edit_invoice', delete: 'void_invoice' },
+  {
+    id: 'monthly_invoice',
+    label: 'Monthly Invoice',
+    create: 'create_monthly_invoice',
+    view: 'view_monthly_invoice',
+    edit: 'edit_monthly_invoice',
+    delete: 'void_monthly_invoice',
+  },
   { id: 'sales_order', label: 'Sales Order', create: 'create_sales_order', view: 'view_sales_order', edit: 'edit_sales_order', delete: 'void_sales_order' },
   { id: 'quotation', label: 'Quotation', create: 'create_quotation', view: 'view_quotation', edit: 'edit_quotation', delete: 'void_quotation' },
   { id: 'grn', label: 'GRN', create: 'create_grn', view: 'view_grn', edit: 'edit_grn', delete: 'void_grn' },
@@ -45,6 +61,23 @@ export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
     viewOnly: true,
   },
 ];
+
+export function getInvoicePermissionKeys(subtype: string | null | undefined): InvoicePermissionKeys {
+  if (isMonthlyInvoiceSubtype(subtype)) {
+    return {
+      view: 'view_monthly_invoice',
+      create: 'create_monthly_invoice',
+      edit: 'edit_monthly_invoice',
+      delete: 'void_monthly_invoice',
+    };
+  }
+  return {
+    view: 'view_invoice',
+    create: 'create_invoice',
+    edit: 'edit_invoice',
+    delete: 'void_invoice',
+  };
+}
 
 export function isViewOnlyPermissionRow(row: FunctionPermissionRow): boolean {
   return row.viewOnly === true;
@@ -158,7 +191,7 @@ export function canCreateWarehouseAction(
 export const MENU_PATH_VIEW_PERMISSION: Record<string, string> = {
   '/purchasing/purchases': 'view_po',
   '/sales/invoices': 'view_invoice',
-  '/sales/monthly-invoices': 'view_invoice',
+  '/sales/monthly-invoices': 'view_monthly_invoice',
   '/sales/orders': 'view_sales_order',
   '/sales/quotations': 'view_quotation',
   '/reports/sales': 'view_sales_report',

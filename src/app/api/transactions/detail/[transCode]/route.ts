@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
 import {
-  assertDbPrefixPermission,
+  assertTransactionPermission,
   forbiddenResponse,
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
+import {
+  isTransactionInShopScope,
+  shopScopeRequiredResponse,
+  transactionOutOfShopScopeResponse,
+} from '@/lib/shopScope';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { ensurePrefixRefColumn, resolveDisplayPrefix } from '@/lib/ensurePrefixRefColumn';
 import { effectivePrefixRef } from '@/lib/prefixRef';
@@ -32,6 +37,10 @@ export async function GET(
   context: { params: Promise<{ transCode: string }> }
 ) {
   try {
+    const authResult = await getAuthenticatedPermissionKeys(request);
+    if (!authResult.ok) return authResult.response;
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
+
     const { transCode } = await context.params;
     if (!transCode) {
       return NextResponse.json(
@@ -90,8 +99,9 @@ export async function GET(
         LIMIT 1
       ) tt ON h.trans_code = tt.trans_code
       LEFT JOIN t_payment_method pm ON tt.pm_code = pm.pm_code
-      WHERE h.trans_code = ?`,
-      [transCode, transCode]
+      WHERE h.trans_code = ?
+        AND h.shop_code = ?`,
+      [transCode, transCode, authResult.shopCode]
     );
 
     const headerRows = headerResult.data as Record<string, unknown>[] | undefined;
@@ -103,6 +113,9 @@ export async function GET(
     }
 
     const header = headerRows[0];
+    if (!isTransactionInShopScope(header?.shop_code as string | undefined, authResult.shopCode)) {
+      return transactionOutOfShopScopeResponse();
+    }
     const headerPrefixRef = effectivePrefixRef(
       header?.prefix_ref as string | undefined,
       header?.prefix as string | undefined
@@ -111,12 +124,12 @@ export async function GET(
     header.prefix_ref = headerPrefixRef;
     header.prefix = displayPrefix || header.prefix;
 
-    const authResult = await getAuthenticatedPermissionKeys(request);
-    if (!authResult.ok) return authResult.response;
     const prefix = headerPrefixRef || String(header?.prefix ?? '').trim();
     if (
       prefix &&
-      !assertDbPrefixPermission(authResult.keys, prefix, 'view')
+      !assertTransactionPermission(authResult.keys, prefix, 'view', {
+        invoiceSubtype: header?.invoice_subtype as string | undefined,
+      })
     ) {
       return forbiddenResponse('You do not have permission to view this transaction');
     }

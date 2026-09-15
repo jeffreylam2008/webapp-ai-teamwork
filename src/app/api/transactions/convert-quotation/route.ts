@@ -6,9 +6,26 @@ import { logTransactionAction } from '@/lib/audit';
 import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { ensurePrefixRefColumn } from '@/lib/ensurePrefixRefColumn';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
+import {
+  assertTransCodeInShopScope,
+  getShopScopeFromAuth,
+  shopScopeRequiredResponse,
+} from '@/lib/shopScope';
 
 export async function POST(request: NextRequest) {
   try {
+    const token = extractTokenFromRequest(request);
+    if (!token) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+    const auth = await verifyToken(token);
+    if (!auth.success || !auth.user) {
+      return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
+    }
+    const scopeShop = getShopScopeFromAuth(auth.user);
+    if (!scopeShop) return shopScopeRequiredResponse();
+
     await ensurePrefixRefColumn();
     const body = await request.json();
     const { quotationCode } = body;
@@ -20,6 +37,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const scopeErr = await assertTransCodeInShopScope(String(quotationCode), scopeShop);
+    if (scopeErr) return scopeErr;
+
     console.log('[API] Converting quotation to Sales Order (draft):', quotationCode);
 
     const result = await dbService.withTransaction(async () => {
@@ -29,8 +49,9 @@ export async function POST(request: NextRequest) {
                 is_convert
          FROM t_transaction_h 
          WHERE trans_code = ?
-           AND ${sqlEqualsStoredPrefixRef()}`,
-        [quotationCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.QTA)]
+           AND ${sqlEqualsStoredPrefixRef()}
+           AND shop_code = ?`,
+        [quotationCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.QTA), scopeShop]
       );
 
       if (!quotationCheck.data || quotationCheck.data.length === 0) {
@@ -92,7 +113,7 @@ export async function POST(request: NextRequest) {
           PREFIX_REF.SO,
           quotation.cust_code,
           quotation.refer_code,
-          quotation.shop_code,
+          scopeShop,
           quotation.total,
           quotation.employee_code,
           quotation.remark,
@@ -137,8 +158,8 @@ export async function POST(request: NextRequest) {
       await dbService.query(
         `UPDATE t_transaction_h 
          SET is_convert = 1, refer_code = ?, modify_date = NOW()
-         WHERE trans_code = ?`,
-        [orderCode, quotationCode]
+         WHERE trans_code = ? AND shop_code = ?`,
+        [orderCode, quotationCode, scopeShop]
       );
 
       const soHoldMap = new Map<string, number>();
@@ -151,7 +172,7 @@ export async function POST(request: NextRequest) {
       }
       await syncSalesOrderWarehouseStageHold({
         transCode: orderCode,
-        shopCode: String(quotation.shop_code || '').trim(),
+        shopCode: scopeShop,
         effectivePrefix: 'SO',
         effectiveIsVoid: 0,
         effectiveIsSettle: 0,

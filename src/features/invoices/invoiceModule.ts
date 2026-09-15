@@ -3,6 +3,10 @@ import {
   INVOICE_SUBTYPE_STANDARD,
   type InvoiceSubtype,
 } from '@/config/invoiceSubtypes';
+import {
+  getInvoicePermissionKeys,
+  type InvoicePermissionKeys,
+} from '@/config/transactionPermissions';
 import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { PREFIX_REF } from '@/lib/prefixRef';
 
@@ -42,19 +46,22 @@ export type InvoiceModuleConfig = {
   invoiceSubtype: InvoiceSubtype;
   menuKey: string;
   breadcrumbKey: 'invoices' | 'monthlyInvoices';
+  permissions: InvoicePermissionKeys;
 };
 
 export function getInvoiceModuleConfig(mode: InvoiceModuleMode): InvoiceModuleConfig {
   const isMonthly = mode === 'monthly';
+  const invoiceSubtype = isMonthly ? INVOICE_SUBTYPE_MONTHLY : INVOICE_SUBTYPE_STANDARD;
   return {
     mode,
     isMonthly,
     basePath: isMonthly ? '/sales/monthly-invoices' : '/sales/invoices',
     sessionKey: isMonthly ? 'monthly_invoice_session_id' : 'invoice_session_id',
     cloneKeyPrefix: isMonthly ? 'monthly_invoice_clone_' : 'invoice_clone_',
-    invoiceSubtype: isMonthly ? INVOICE_SUBTYPE_MONTHLY : INVOICE_SUBTYPE_STANDARD,
+    invoiceSubtype,
     menuKey: isMonthly ? 'monthly-invoices' : 'invoices',
     breadcrumbKey: isMonthly ? 'monthlyInvoices' : 'invoices',
+    permissions: getInvoicePermissionKeys(invoiceSubtype),
   };
 }
 

@@ -196,6 +196,8 @@ async function createNextInvoiceFromSource(
 export async function generateDueRecurringMonthlyInvoices(options?: {
   /** Only process this source invoice (after toggle on). */
   onlyTransCode?: string;
+  /** Limit to the logged-in shop. */
+  shopCode?: string;
 }): Promise<RecurringGenerateResult[]> {
   await ensureInvoiceSubtypeColumns();
   await ensurePrefixRefColumn();
@@ -210,6 +212,10 @@ export async function generateDueRecurringMonthlyInvoices(options?: {
   if (options?.onlyTransCode) {
     onlySql = ' AND trans_code = ?';
     params.push(String(options.onlyTransCode).trim());
+  }
+  if (options?.shopCode) {
+    onlySql += ' AND shop_code = ?';
+    params.push(String(options.shopCode).trim());
   }
 
   const sources = await dbService.query<SourceHeader>(

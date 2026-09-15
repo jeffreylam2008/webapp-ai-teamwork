@@ -6,6 +6,11 @@ import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
 import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { formatSqlDateTime } from '@/lib/datetime';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import {
+  assertTransCodeInShopScope,
+  getShopScopeFromAuth,
+  shopScopeRequiredResponse,
+} from '@/lib/shopScope';
 
 type DeliveryNoteItemInput = {
   item_code?: string;
@@ -60,6 +65,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   let body: DeliveryNoteBody;
   try {
     body = await request.json();
@@ -70,8 +78,9 @@ export async function POST(request: NextRequest) {
   const transCode = String(body.delivery_note_no || '').trim();
   const referCode = String(body.reference_no || '').trim();
   const custCode = String(body.cust_code || '').trim();
-  const shopCode = String(body.shop_code || body.wh_code || '').trim();
-  const whCode = String(body.wh_code || body.shop_code || '').trim();
+  // Document always belongs to the logged-in shop.
+  const shopCode = scopeShop;
+  const whCode = String(body.wh_code || scopeShop || '').trim() || scopeShop;
   const pmCode = String(body.pm_code || '').trim();
   const employeeCode = String(auth.user.employee_code || '').trim();
   const items = Array.isArray(body.items) ? body.items : [];
@@ -82,7 +91,7 @@ export async function POST(request: NextRequest) {
   if (!custCode) {
     return NextResponse.json({ success: false, error: 'Customer is required' }, { status: 400 });
   }
-  if (!shopCode && !whCode) {
+  if (!shopCode) {
     return NextResponse.json({ success: false, error: 'Shop / warehouse is required' }, { status: 400 });
   }
   if (items.length === 0) {
@@ -108,11 +117,14 @@ export async function POST(request: NextRequest) {
     }
 
     let skipStockDeduction = false;
-    if (referCode.toUpperCase().startsWith('SO')) {
+    if (referCode) {
+      const soScopeErr = await assertTransCodeInShopScope(referCode, scopeShop);
+      if (soScopeErr) return soScopeErr;
+
       const soHdr = await dbService.query<{ is_settle: number | null; is_void: number | null }>(
         `SELECT is_settle, is_void FROM t_transaction_h
-         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} LIMIT 1`,
-        [referCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
+         WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} AND shop_code = ? LIMIT 1`,
+        [referCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO), scopeShop]
       );
       const so = soHdr.data?.[0];
       if (so && Number(so.is_void ?? 0) !== 1 && Number(so.is_settle ?? 0) === 1) {

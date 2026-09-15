@@ -14,6 +14,7 @@ import {
   sqlSelectDisplayPrefix,
   sqlStoredPrefixKey,
 } from '@/lib/prefixRef';
+import { shopScopeRequiredResponse } from '@/lib/shopScope';
 
 const ALL_WAREHOUSE_PREFIXES = [
   PREFIX_REF.GRN,
@@ -225,11 +226,13 @@ export async function GET(request: NextRequest) {
     if (!authResult.keys.has('view_warehouse_report')) {
       return forbiddenResponse();
     }
+    if (!authResult.shopCode) return shopScopeRequiredResponse();
 
     const { searchParams } = new URL(request.url);
     const startDate = (searchParams.get('start_date') || '').trim();
     const endDate = (searchParams.get('end_date') || '').trim();
-    const shopCode = (searchParams.get('shop_code') || '').trim();
+    // Always force JWT shop — ignore client shop_code to prevent cross-shop reads.
+    const shopCode = authResult.shopCode;
     const groupBy = parseGroupBy(searchParams.get('group_by') || 'document');
     const isExport = searchParams.get('export') === '1';
     const page = isExport ? 1 : Math.max(1, parseInt(searchParams.get('page') || '1', 10));

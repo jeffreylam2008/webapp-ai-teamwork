@@ -4,6 +4,16 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
 import { rollbackSalesOrderIfInvoiceVoided } from '@/lib/salesOrderInvoiceConversion';
 import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import {
+  assertTransCodeInShopScope,
+  getShopScopeFromAuth,
+  shopScopeRequiredResponse,
+} from '@/lib/shopScope';
+import {
+  assertInvoiceSubtypePermission,
+  forbiddenResponse,
+  loadPermissionKeysForUser,
+} from '@/lib/transactionPermissionAuth';
 
 /**
  * POST /api/transactions/void-invoice
@@ -21,6 +31,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: auth.error || 'Unauthorized' }, { status: 401 });
   }
 
+  const scopeShop = getShopScopeFromAuth(auth.user);
+  if (!scopeShop) return shopScopeRequiredResponse();
+
   let body: { transCode?: string };
   try {
     body = await request.json();
@@ -34,14 +47,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const scopeErr = await assertTransCodeInShopScope(transCode, scopeShop);
+    if (scopeErr) return scopeErr;
+
     const hdr = await dbService.query<{
       prefix: string | null;
       prefix_ref: string | null;
       is_void: number | null;
       is_settle: number | null;
+      invoice_subtype: string | null;
     }>(
-      'SELECT prefix, prefix_ref, is_void, is_settle FROM t_transaction_h WHERE trans_code = ? LIMIT 1',
-      [transCode]
+      'SELECT prefix, prefix_ref, is_void, is_settle, invoice_subtype FROM t_transaction_h WHERE trans_code = ? AND shop_code = ? LIMIT 1',
+      [transCode, scopeShop]
     );
 
     const row = hdr.data?.[0];
@@ -51,6 +68,12 @@ export async function POST(request: NextRequest) {
 
     if (!matchesPrefixRef(row.prefix, row.prefix_ref, PREFIX_REF.INV)) {
       return NextResponse.json({ success: false, error: 'Not an invoice transaction' }, { status: 400 });
+    }
+
+    const employeeCode = String(auth.user.employee_code ?? '').trim();
+    const permKeys = await loadPermissionKeysForUser(employeeCode, scopeShop);
+    if (!assertInvoiceSubtypePermission(permKeys, row.invoice_subtype, 'delete')) {
+      return forbiddenResponse('You do not have permission to void this invoice');
     }
 
     if (Number(row.is_void ?? 0) === 1) {
@@ -66,8 +89,8 @@ export async function POST(request: NextRequest) {
 
     await dbService.query(
       `UPDATE t_transaction_h SET is_void = 1, modify_date = NOW()
-       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()}`,
-      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.INV)]
+       WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} AND shop_code = ?`,
+      [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.INV), scopeShop]
     );
 
     await rollbackSalesOrderIfInvoiceVoided(transCode);

@@ -15,10 +15,10 @@ import {
 import { Button, Form, Input, type InputRef, Select, InputNumber, Card, Row, Col, message, Space, Divider, DatePicker, Modal, Table } from 'antd';
 import dayjs, { type Dayjs } from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
-import { PREFIX_REF } from '@/lib/prefixRef';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
 import { useTransactionFormData } from '@/hooks/useTransactionFormData';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getQuotationCreateTexts } from './i18n';
@@ -39,7 +39,7 @@ import {
   QUOTATION_CLONE_KEY_PREFIX,
   QUOTATION_BASE_PATH,
 } from '@/features/quotations/quotationModule';
-import { ensureBrowserSessionId } from '@/lib/transactionDraft';
+import { ensureBrowserSessionId, isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 
 interface QuotationLineItem {
   uid: number;
@@ -78,7 +78,17 @@ export default function CreateQuotationPage() {
   const warehouseManuallySetRef = useRef(false);
   const selectCustRefetchAttempted = useRef(false);
 
-  const requestBackOrDiscard = useBackNavigation(() => setShowDiscardModal(true));
+  const requestBackOrDiscard = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: isGeneratedTransactionNumber(isDraft ? reservedTransCode : transCode),
+    fallbackPath: QUOTATION_BASE_PATH,
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem(QUOTATION_SESSION_KEY);
+    },
+  });
 
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<{ cust_code: string; name: string; pm_code?: string | null } | null>(null);
@@ -117,6 +127,7 @@ export default function CreateQuotationPage() {
 
     form.setFieldsValue({
       ...(isDraft ? {} : { trans_code: transCode }),
+      trans_code: transCode,
       prefix_ref: PREFIX_REF.QTA,
       transaction_date: dayjs(),
       valid_until_date: dayjs().add(30, 'day'),
@@ -211,54 +222,6 @@ export default function CreateQuotationPage() {
       console.error(e);
     }
   }, [transCode, formData, form]);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
-
-  useEffect(() => {
-    const originalPush = router.push.bind(router) as typeof router.push;
-    const originalReplace = router.replace.bind(router) as typeof router.replace;
-
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
 
   useEffect(() => {
     if (formDataError) {

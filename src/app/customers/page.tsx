@@ -21,9 +21,9 @@ import { useDataTable } from '@/hooks/useDataTable';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { usePaymentMethods } from '@/hooks/usePaymentMethods';
-// import { useDistricts } from '@/hooks/useDistricts';
 import { useRouter } from 'next/navigation';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getCustomerTexts } from './i18n';
 
 interface Customer {
@@ -38,6 +38,8 @@ interface Customer {
   pt_code?: string;
   status: string;
   district_code?: string;
+  district_eng?: string | null;
+  district_chi?: string | null;
   from_time?: string;
   to_time?: string;
   delivery_remark?: string;
@@ -55,6 +57,7 @@ const CustomersContent: React.FC = () => {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getCustomerTexts(lang), [lang]);
   const { token } = useAuth();
+  const { can, loading: permissionsLoading } = usePermissions();
   const { message: messageApi } = App.useApp();
   const [pageMessage, setPageMessage] = useState<{ type: 'success' | 'error' | null; text: string | null }>({ type: null, text: null });
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -116,14 +119,6 @@ const CustomersContent: React.FC = () => {
   // Get payment methods for mapping codes to descriptions
   const { options: paymentMethodOptions } = usePaymentMethods();
 
-
-
-  // Get unique values for filters
-
-  // Get districts for the dropdown (unused but kept for future use)
-  // const { options: districtOptions, loading: districtsLoading } = useDistricts();
-
-
   const statusLabel = useCallback(
     (status: string) =>
       status === 'Active' ? t.status.active : status === 'Closed' ? t.status.closed : status,
@@ -173,6 +168,37 @@ const CustomersContent: React.FC = () => {
       sorter: (a: Customer, b: Customer) => (a.phone_1 || '').localeCompare(b.phone_1 || ''),
     },
     {
+      title: t.list.colDistrict,
+      dataIndex: 'district_code',
+      key: 'district_code',
+      sorter: (a: Customer, b: Customer) => {
+        const aLabel =
+          (lang === 'zh-Hant' ? a.district_chi : a.district_eng) ||
+          a.district_eng ||
+          a.district_chi ||
+          a.district_code ||
+          '';
+        const bLabel =
+          (lang === 'zh-Hant' ? b.district_chi : b.district_eng) ||
+          b.district_eng ||
+          b.district_chi ||
+          b.district_code ||
+          '';
+        return String(aLabel).localeCompare(String(bLabel));
+      },
+      render: (_: unknown, record: Customer) => {
+        const name =
+          (lang === 'zh-Hant' ? record.district_chi : record.district_eng) ||
+          record.district_eng ||
+          record.district_chi ||
+          '';
+        if (!record.district_code && !name) return '—';
+        return name
+          ? `${name}${record.district_code ? ` (${record.district_code})` : ''}`
+          : record.district_code;
+      },
+    },
+    {
       title: t.list.colPaymentMethod,
       dataIndex: 'pm_code',
       key: 'pm_code',
@@ -208,7 +234,7 @@ const CustomersContent: React.FC = () => {
       },
     },
   ],
-    [t.list, paymentMethodOptions, statusLabel]
+    [t.list, paymentMethodOptions, statusLabel, lang]
   );
 
   const filterOptions = useMemo(
@@ -285,6 +311,15 @@ const CustomersContent: React.FC = () => {
 
   return (
     <div>
+      {permissionsLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+          <Spin size="large" />
+        </div>
+      ) : !can('view_customer') ? (
+        <div className="px-8 py-6 text-gray-600">
+          {lang === 'zh-Hant' ? '您沒有權限檢視此頁面。' : 'You do not have permission to view this page.'}
+        </div>
+      ) : (
       <DataTableLayout
         pageMessage={pageMessage}
         onMessageClose={() => {
@@ -342,10 +377,11 @@ const CustomersContent: React.FC = () => {
             ...(f.pm_code ? { pm_code: String(f.pm_code) } : {}),
           })
         }
-        onAdd={handleAdd}
-        onView={handleEdit as (record: unknown) => void}
-        onDelete={handleDelete as (record: unknown) => void}
+        onAdd={can('create_customer') ? handleAdd : undefined}
+        onView={can('view_customer') || can('edit_customer') ? (handleEdit as (record: unknown) => void) : undefined}
+        onDelete={can('delete_customer') ? (handleDelete as (record: unknown) => void) : undefined}
       />
+      )}
 
       {/* Modal for cannot delete */}
       <Modal

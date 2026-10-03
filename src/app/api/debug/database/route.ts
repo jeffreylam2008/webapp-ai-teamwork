@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbService from '@/lib/database';
-import { resolvedDbConfig } from '@/lib/db-connection-config';
+import { tryGetResolvedDbConfig } from '@/lib/db-connection-config';
 
 export async function GET() {
   try {
@@ -9,11 +9,10 @@ export async function GET() {
     
     // Test table existence
     const tablesResult = await dbService.query('SHOW TABLES');
-    const configInfo = {
-      host: resolvedDbConfig.host,
-      database: resolvedDbConfig.database,
-      port: resolvedDbConfig.port,
-    };
+    const config = tryGetResolvedDbConfig();
+    const configInfo = config
+      ? { host: config.host, database: config.database, port: config.port }
+      : { host: null, database: null, port: null };
     return NextResponse.json({
       success: true,
       message: 'Database connection successful',

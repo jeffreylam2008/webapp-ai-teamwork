@@ -21,8 +21,6 @@ function DeliveryNotePrintContent() {
       missingCodeText={t.print.missingCode}
       documentNotFoundText={t.print.notFound}
       loadFailedText={t.print.loadFailed}
-      printButtonText={t.print.print}
-      closeButtonText={t.print.close}
       hidePricing
     />
   );

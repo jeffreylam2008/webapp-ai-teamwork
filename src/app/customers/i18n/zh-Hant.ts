@@ -35,6 +35,7 @@ export const zhHant = {
     colName: '客戶名稱',
     colContact: '聯絡人',
     colPhone: '電話',
+    colDistrict: '地區',
     colPaymentMethod: '付款方式',
     colStatus: '狀態',
     filterSearch: '搜尋',

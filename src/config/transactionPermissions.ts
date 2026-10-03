@@ -26,6 +26,46 @@ export type InvoicePermissionKeys = {
 
 /** One row in the permissions table: function name + keys for view, create, edit, delete/void */
 export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
+  {
+    id: 'customer',
+    label: 'Customers',
+    create: 'create_customer',
+    view: 'view_customer',
+    edit: 'edit_customer',
+    delete: 'delete_customer',
+  },
+  {
+    id: 'supplier',
+    label: 'Suppliers',
+    create: 'create_supplier',
+    view: 'view_supplier',
+    edit: 'edit_supplier',
+    delete: 'delete_supplier',
+  },
+  {
+    id: 'item',
+    label: 'Items',
+    create: 'create_item',
+    view: 'view_item',
+    edit: 'edit_item',
+    delete: 'delete_item',
+  },
+  {
+    id: 'category',
+    label: 'Categories',
+    create: 'create_category',
+    view: 'view_category',
+    edit: 'edit_category',
+    delete: 'delete_category',
+  },
+  {
+    id: 'item_type',
+    label: 'Item Types',
+    create: 'create_item_type',
+    view: 'view_item_type',
+    edit: 'edit_item_type',
+    delete: 'delete_item_type',
+  },
   { id: 'po', label: 'Purchase Order', create: 'create_po', view: 'view_po', edit: 'edit_po', delete: 'void_po' },
   { id: 'invoice', label: 'Invoice', create: 'create_invoice', view: 'view_invoice', edit: 'edit_invoice', delete: 'void_invoice' },
   {
@@ -60,6 +100,78 @@ export const FUNCTION_PERMISSION_ROWS: FunctionPermissionRow[] = [
     delete: 'void_warehouse_report',
     viewOnly: true,
   },
+  {
+    id: 'master_data',
+    label: 'Import/Export',
+    create: 'create_master_data',
+    view: 'view_master_data',
+    edit: 'edit_master_data',
+    delete: 'void_master_data',
+    viewOnly: true,
+  },
+  {
+    id: 'district',
+    label: 'Districts',
+    create: 'create_district',
+    view: 'view_district',
+    edit: 'edit_district',
+    delete: 'void_district',
+    viewOnly: true,
+  },
+  {
+    id: 'prefix',
+    label: 'Prefixes',
+    create: 'create_prefix',
+    view: 'view_prefix',
+    edit: 'edit_prefix',
+    delete: 'void_prefix',
+    viewOnly: true,
+  },
+  {
+    id: 'payment_method',
+    label: 'Payment Methods',
+    create: 'create_payment_method',
+    view: 'view_payment_method',
+    edit: 'edit_payment_method',
+    delete: 'void_payment_method',
+    viewOnly: true,
+  },
+  {
+    id: 'payment_term',
+    label: 'Payment Terms',
+    create: 'create_payment_term',
+    view: 'view_payment_term',
+    edit: 'edit_payment_term',
+    delete: 'void_payment_term',
+    viewOnly: true,
+  },
+  {
+    id: 'shop',
+    label: 'Shops',
+    create: 'create_shop',
+    view: 'view_shop',
+    edit: 'edit_shop',
+    delete: 'void_shop',
+    viewOnly: true,
+  },
+  {
+    id: 'users',
+    label: 'Users',
+    create: 'create_users',
+    view: 'view_users',
+    edit: 'edit_users',
+    delete: 'void_users',
+    viewOnly: true,
+  },
+  {
+    id: 'system',
+    label: 'System',
+    create: 'create_system',
+    view: 'view_system',
+    edit: 'edit_system',
+    delete: 'void_system',
+    viewOnly: true,
+  },
 ];
 
 export function getInvoicePermissionKeys(subtype: string | null | undefined): InvoicePermissionKeys {
@@ -81,6 +193,71 @@ export function getInvoicePermissionKeys(subtype: string | null | undefined): In
 
 export function isViewOnlyPermissionRow(row: FunctionPermissionRow): boolean {
   return row.viewOnly === true;
+}
+
+/** Default UI areas for the access-control matrix (roles / users pages). */
+export type FunctionAccessAreaId = 'sales' | 'purchase' | 'warehouse' | 'system';
+
+export type FunctionAccessArea = {
+  id: FunctionAccessAreaId;
+  label: string;
+  /** Function row ids belonging to this area (order preserved). */
+  functionIds: string[];
+};
+
+export const FUNCTION_ACCESS_AREAS: FunctionAccessArea[] = [
+  {
+    id: 'sales',
+    label: 'Sales',
+    functionIds: [
+      'customer',
+      'invoice',
+      'monthly_invoice',
+      'sales_order',
+      'quotation',
+      'sales_report',
+    ],
+  },
+  {
+    id: 'purchase',
+    label: 'Purchase Order',
+    functionIds: ['supplier', 'po'],
+  },
+  {
+    id: 'warehouse',
+    label: 'Warehouse',
+    functionIds: [
+      'item',
+      'category',
+      'item_type',
+      'grn',
+      'stocktake',
+      'delivery_note',
+      'adjustment',
+      'warehouse_report',
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    functionIds: [
+      'master_data',
+      'district',
+      'prefix',
+      'payment_method',
+      'payment_term',
+      'shop',
+      'users',
+      'system',
+    ],
+  },
+];
+
+export function getFunctionRowsForAccessArea(area: FunctionAccessArea): FunctionPermissionRow[] {
+  const byId = new Map(FUNCTION_PERMISSION_ROWS.map((r) => [r.id, r]));
+  return area.functionIds
+    .map((id) => byId.get(id))
+    .filter((r): r is FunctionPermissionRow => r != null);
 }
 
 export function getDefaultAccessFlags(row: FunctionPermissionRow): {
@@ -169,6 +346,21 @@ export function canAccessWarehouseStockMenu(can: (key: string) => boolean): bool
   );
 }
 
+/** Settings hub / parent menu: show if user can view any settings function. */
+const SETTINGS_MENU_FUNCTION_IDS = new Set([
+  'district',
+  'prefix',
+  'payment_method',
+  'payment_term',
+  'shop',
+]);
+
+export function canAccessSettingsMenu(can: (key: string) => boolean): boolean {
+  return FUNCTION_PERMISSION_ROWS.some(
+    (row) => SETTINGS_MENU_FUNCTION_IDS.has(row.id) && can(row.view)
+  );
+}
+
 /**
  * Stock page action bar create buttons (GRN, DN, adjustment, stocktake).
  */
@@ -189,6 +381,11 @@ export function canCreateWarehouseAction(
 }
 
 export const MENU_PATH_VIEW_PERMISSION: Record<string, string> = {
+  '/customers': 'view_customer',
+  '/suppliers': 'view_supplier',
+  '/products/items': 'view_item',
+  '/products/categories': 'view_category',
+  '/products/item-types': 'view_item_type',
   '/purchasing/purchases': 'view_po',
   '/sales/invoices': 'view_invoice',
   '/sales/monthly-invoices': 'view_monthly_invoice',
@@ -196,4 +393,12 @@ export const MENU_PATH_VIEW_PERMISSION: Record<string, string> = {
   '/sales/quotations': 'view_quotation',
   '/reports/sales': 'view_sales_report',
   '/reports/warehouse': 'view_warehouse_report',
+  '/administration/master-data': 'view_master_data',
+  '/administration/settings/district': 'view_district',
+  '/administration/settings/prefix': 'view_prefix',
+  '/administration/settings/payment-method': 'view_payment_method',
+  '/administration/settings/payment-term': 'view_payment_term',
+  '/administration/settings/shops': 'view_shop',
+  '/administration/users': 'view_users',
+  '/administration/settings/system': 'view_system',
 };

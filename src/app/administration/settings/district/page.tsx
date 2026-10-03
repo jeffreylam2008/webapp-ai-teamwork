@@ -9,6 +9,8 @@ import { useDataTable } from '@/hooks/useDataTable';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { usePermissions } from '@/hooks/usePermissions';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 import { getDistrictTexts } from './i18n';
 
 interface District {
@@ -32,6 +34,8 @@ export default function DistrictPage() {
   const { token } = useAuth();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getDistrictTexts(lang), [lang]);
+  const { can } = usePermissions();
+  const canView = can('view_district');
 
   const REGIONS = useMemo(
     () => [
@@ -307,10 +311,11 @@ export default function DistrictPage() {
           ]} 
         />
       }
-      buttonBar={DistrictsButtonBar}
+      buttonBar={canView ? DistrictsButtonBar : undefined}
       title={t.page.title}
       description={t.page.description}
     >
+      <RequireViewPermission permission="view_district" lang={lang}>
       {/* Message Section */}
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
@@ -539,6 +544,7 @@ export default function DistrictPage() {
           </div>
         </Form>
       </Modal>
+      </RequireViewPermission>
     </BasicPageLayout>
   );
 }

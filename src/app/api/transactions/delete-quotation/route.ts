@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { logTransactionAction } from '@/lib/audit';
-import { PREFIX_REF, matchesPrefixRef } from '@/lib/prefixRef';
+import { PREFIX_REF, bindEqualsStoredPrefixRef, matchesPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 import {
   assertDbPrefixPermission,
   forbiddenResponse,
@@ -88,10 +88,12 @@ export async function DELETE(request: NextRequest) {
       success: true,
       message: `Quotation ${transCode} deleted successfully`,
     });
+
+    return NextResponse.json({ success: true, message: 'Quotation deleted' });
   } catch (error) {
-    console.error('[API] delete-quotation error:', error);
+    console.error('[delete-quotation]', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete quotation' },
+      { success: false, error: error instanceof Error ? error.message : 'Failed to delete quotation' },
       { status: 500 }
     );
   }

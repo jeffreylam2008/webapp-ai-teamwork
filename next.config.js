@@ -27,6 +27,7 @@ const nextConfig = {
     clientRouterFilterRedirects: true,
     // Optimize bundle loading
     optimizePackageImports: ['antd', '@ant-design/icons'],
+    webpackBuildWorker: true
   },
 
   // Treat these packages as external in the server build

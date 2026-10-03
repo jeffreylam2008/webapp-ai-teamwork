@@ -10,7 +10,7 @@ import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { UserOutlined, LockOutlined, SaveOutlined } from '@ant-design/icons';
-import { Card, Form, Input, Select, Button, message, Spin } from 'antd';
+import { Card, Form, Input, Select, Button, Spin, App } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 
@@ -29,6 +29,7 @@ export default function AdministrationProfilePage() {
   const bc = getBreadcrumbLabels(lang);
   const hub = getHubPagesTexts(lang).administrationHub;
   const p = getAdminPagesTexts(lang).profile;
+  const { message: messageApi } = App.useApp();
   const { token, isAuthenticated, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,11 +57,11 @@ export default function AdministrationProfilePage() {
             default_shopcode: result.data.default_shopcode || undefined,
           });
         } else {
-          message.error(result.error || p.failedLoad);
+          messageApi.error(result.error || p.failedLoad);
         }
       })
       .catch(() => {
-        if (!cancelled) message.error(p.failedLoad);
+        if (!cancelled) messageApi.error(p.failedLoad);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -69,13 +70,13 @@ export default function AdministrationProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, authLoading, token, form, router]);
+  }, [isAuthenticated, authLoading, token, form, router, messageApi, p.failedLoad]);
 
   const onFinish = async (values: Record<string, string>) => {
     if (!token) return;
     const { default_shopcode, current_password, new_password, confirm_password } = values;
     if (new_password && new_password !== confirm_password) {
-      message.error(p.passwordMismatch);
+      messageApi.error(p.passwordMismatch);
       return;
     }
     setSaving(true);
@@ -96,7 +97,7 @@ export default function AdministrationProfilePage() {
       });
       const result = await res.json();
       if (result.success) {
-        message.success(p.saved);
+        messageApi.success(p.saved);
         setProfile((prev) =>
           prev
             ? {
@@ -107,10 +108,10 @@ export default function AdministrationProfilePage() {
         );
         form.setFieldsValue({ current_password: '', new_password: '', confirm_password: '' });
       } else {
-        message.error(result.error || p.saveFailed);
+        messageApi.error(result.error || p.saveFailed);
       }
     } catch {
-      message.error(p.saveError);
+      messageApi.error(p.saveError);
     } finally {
       setSaving(false);
     }

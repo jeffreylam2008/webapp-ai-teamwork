@@ -1,44 +1,53 @@
+import 'server-only';
 import dbConfig from '@/data/db-config.json';
-import { isMaskedDbCredential, resolveDbCredential } from '@/lib/db-credential-utils';
+import { getMissingRequiredEnvVars, isEnvLocalPresent } from '@/lib/env-config.server';
 
-export type AppDbConfig = typeof dbConfig;
+export type DbPoolConfig = typeof dbConfig;
+
+export type AppDbConfig = DbPoolConfig & {
+  user: string;
+  password: string;
+  database: string;
+};
 
 /**
- * Merge `src/data/db-config.json` with optional process env.
- * User/password in JSON may be masked (`********`); real values come from `DB_USER` / `DB_PASSWORD`.
- * Also supports `DB_HOST`, `DB_PORT`, and `DB_NAME` overrides.
+ * Pool settings from `src/data/db-config.json`.
+ * Credentials (user, password, database) must come from `.env.local` only.
  */
-export function getResolvedDbConfig(): AppDbConfig {
+export function tryGetResolvedDbConfig(): AppDbConfig | null {
+  if (!isEnvLocalPresent()) return null;
+
+  const missing = getMissingRequiredEnvVars();
+  if (missing.length > 0) return null;
+
   const env = process.env;
   const portRaw = env.DB_PORT?.trim();
   const portParsed = portRaw ? Number.parseInt(portRaw, 10) : NaN;
 
-  const user = resolveDbCredential(dbConfig.user, env.DB_USER);
-  const password = resolveDbCredential(dbConfig.password, env.DB_PASSWORD);
-
-  const host = env.DB_HOST?.trim() || dbConfig.host;
-  const database = env.DB_NAME?.trim() || dbConfig.database;
-  const port = Number.isFinite(portParsed) ? portParsed : dbConfig.port;
-
-  if (isMaskedDbCredential(dbConfig.user) && !env.DB_USER?.trim()) {
-    console.warn(
-      '[db-config] DB user is masked in db-config.json; set DB_USER in the environment.'
-    );
-  }
-  if (isMaskedDbCredential(dbConfig.password) && env.DB_PASSWORD === undefined) {
-    console.warn(
-      '[db-config] DB password is masked in db-config.json; set DB_PASSWORD in the environment.'
-    );
-  }
-
   return {
     ...dbConfig,
-    host,
-    port,
-    user,
-    password,
-    database,
+    host: env.DB_HOST?.trim() || dbConfig.host,
+    port: Number.isFinite(portParsed) ? portParsed : dbConfig.port,
+    user: env.DB_USER!.trim(),
+    password: env.DB_PASSWORD!,
+    database: env.DB_NAME!.trim(),
   };
 }
 
-export const resolvedDbConfig = getResolvedDbConfig();
+export function getResolvedDbConfig(): AppDbConfig {
+  const config = tryGetResolvedDbConfig();
+  if (!config) {
+    if (!isEnvLocalPresent()) {
+      throw new Error(
+        'Application locked: `.env.local` was not found. Create it in the project root with DB_USER, DB_PASSWORD, and DB_NAME.'
+      );
+    }
+    const missing = getMissingRequiredEnvVars();
+    throw new Error(
+      `Application locked: missing required variables in \`.env.local\`: ${missing.join(', ')}.`
+    );
+  }
+  return config;
+}
+
+export const resolvedDbConfig: AppDbConfig | null = tryGetResolvedDbConfig();

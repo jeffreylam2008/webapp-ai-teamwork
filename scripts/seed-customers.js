@@ -2,7 +2,7 @@
  * Seed script: import customers dummy data into the database.
  * Run from project root: node scripts/seed-customers.js
  *
- * Requires: src/data/db-config.json, src/data/customers-dummy.json
+ * Requires: src/data/db-config.json, data/customers-dummy.json
  *
  * cust_code in JSON must start with "C" followed by 6 digits (e.g. C100001).
  */
@@ -14,8 +14,8 @@ const { resolveDbConfig } = require('./lib/resolve-db-config');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-function loadJson(filename) {
-  const filepath = path.join(PROJECT_ROOT, 'src', 'data', filename);
+function loadJson(relPath) {
+  const filepath = path.join(PROJECT_ROOT, relPath);
   const raw = fs.readFileSync(filepath, 'utf8');
   return JSON.parse(raw);
 }
@@ -29,8 +29,8 @@ async function seed() {
   let connection;
 
   try {
-    const dbConfig = resolveDbConfig(loadJson('db-config.json'));
-    const customers = loadJson('customers-dummy.json');
+    const dbConfig = resolveDbConfig(loadJson(path.join('src', 'data', 'db-config.json')));
+    const customers = loadJson(path.join('data', 'customers-dummy.json'));
 
     connection = await mysql.createConnection({
       host: dbConfig.host,

@@ -52,7 +52,7 @@ export async function recordExists(
 ): Promise<boolean> {
   const query = `SELECT 1 FROM ${table} WHERE ${field} = ? LIMIT 1`;
   const result = await executeQuery<{ [key: string]: unknown }[]>(query, [value]);
-  return result.length > 0;
+  return Array.isArray(result) && result.length > 0;
 }
 
 export async function canDeleteRecord(
@@ -69,7 +69,7 @@ export async function canDeleteRecord(
   for (const related of relatedTables) {
     const query = `SELECT 1 FROM ${related.table} WHERE ${related.field} = ? LIMIT 1`;
     const result = await executeQuery<{ [key: string]: unknown }[]>(query, [value]);
-    if (result.length > 0) {
+    if (Array.isArray(result) && result.length > 0) {
       return false;
     }
   }
@@ -84,7 +84,7 @@ export async function getTotalCount(
 ): Promise<number> {
   const query = `SELECT COUNT(*) as total FROM ${table} ${whereClause || ''}`;
   const result = await executeQuery<{ total: number }[]>(query, params);
-  return result[0].total;
+  return Array.isArray(result) ? Number(result[0]?.total ?? 0) : 0;
 }
 
 export function buildWhereClause(

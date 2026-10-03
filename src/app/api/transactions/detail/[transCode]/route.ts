@@ -13,7 +13,7 @@ import {
 } from '@/lib/shopScope';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { ensurePrefixRefColumn, resolveDisplayPrefix } from '@/lib/ensurePrefixRefColumn';
-import { effectivePrefixRef } from '@/lib/prefixRef';
+import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
 
 async function ensureHeaderWhCodeColumn() {
   const colResult = await dbService.query<{ column_name: string }>(
@@ -91,7 +91,7 @@ export async function GET(
       LEFT JOIN t_customers c ON h.cust_code = c.cust_code
       LEFT JOIN t_suppliers sup ON h.supp_code = sup.supp_code
       LEFT JOIN t_shop s ON h.shop_code = s.shop_code
-      LEFT JOIN t_shop whs ON h.wh_code = whs.shop_code
+      LEFT JOIN t_shop whs ON COALESCE(NULLIF(TRIM(h.wh_code), ''), h.shop_code) = whs.shop_code
       LEFT JOIN (
         SELECT trans_code, pm_code
         FROM t_transaction_t

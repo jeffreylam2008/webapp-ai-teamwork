@@ -1,9 +1,9 @@
-import mysql from 'mysql2/promise';
+import type { FieldPacket, Pool, PoolConnection } from 'mysql2/promise';
 import { getSharedMysqlPool } from '@/lib/database';
 
 interface QueryResult<T> {
   data: T[];
-  fields?: mysql.FieldPacket[];
+  fields?: FieldPacket[];
 }
 
 interface CacheEntry<T> {
@@ -19,9 +19,13 @@ interface PoolStats {
   cacheSize: number;
 }
 
+/**
+ * Optional query cache helper. Uses the app's shared MySQL pool — do not create a second pool.
+ * Prefer dbService from '@/lib/database' for normal API work.
+ */
 class DatabaseOptimizer {
   private static instance: DatabaseOptimizer;
-  private pool: mysql.Pool;
+  private pool: Pool;
   private queryCache: Map<string, CacheEntry<unknown>> = new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -91,7 +95,7 @@ class DatabaseOptimizer {
   }
 
   // Optimized transaction handling
-  async transaction<T>(callback: (connection: mysql.PoolConnection) => Promise<T>): Promise<T> {
+  async transaction<T>(callback: (connection: PoolConnection) => Promise<T>): Promise<T> {
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -138,9 +142,9 @@ class DatabaseOptimizer {
     return sql.trim().toLowerCase().startsWith('select');
   }
 
-  // Cleanup method
+  /** No-op: shared pool lifecycle is owned by @/lib/database. */
   async close(): Promise<void> {
-    await this.pool.end();
+    this.queryCache.clear();
   }
 }
 

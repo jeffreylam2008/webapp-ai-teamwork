@@ -54,6 +54,14 @@ export async function rollbackSalesOrderIfInvoiceVoided(invTransCode: string): P
   const soCode = String(invRes.data?.[0]?.refer_code ?? '').trim();
   if (!soCode) return;
 
+  // refer_code may use a customized display code (e.g. MSO…); verify it is an SO via prefix_ref.
+  const soCheck = await dbService.query<{ trans_code: string }>(
+    `SELECT trans_code FROM t_transaction_h
+     WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} LIMIT 1`,
+    [soCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO)]
+  );
+  if (!soCheck.data?.[0]) return;
+
   await dbService.query(
     `UPDATE t_transaction_h
      SET is_convert = 0, modify_date = NOW()

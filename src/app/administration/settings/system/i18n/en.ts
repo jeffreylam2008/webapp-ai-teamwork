@@ -27,6 +27,7 @@ export const en = {
     paginationSaveFailed: 'Pagination save failed',
     languageSaveFailed: 'Language save failed',
     timezoneSaveFailed: 'Timezone save failed',
+    shopLogoSaveFailed: 'Shop logo save failed',
   },
   sections: {
     systemName: {
@@ -41,8 +42,17 @@ export const en = {
     },
     shopLogo: {
       title: 'Shop logo',
-      hint: 'Sidebar branding after sign-in. Icon name or image URL. Falls back to Logo if empty.',
-      placeholder: 'e.g. ShopOutlined or /logo-300x300.png',
+      hint: 'Uploaded for the shop selected at login. Stored as binary on that shop (t_shop.logo_pic). JPG/PNG, max 5 MB (resized like item pictures). Used in the sidebar after sign-in; falls back to Logo if empty.',
+      forShop: (shop: string) => `Applies to shop: ${shop}`,
+      noShop: 'No shop selected. Sign in with a shop to manage its logo.',
+      upload: 'Upload logo',
+      remove: 'Remove',
+      imageFileTypesHint: 'JPG, JPEG, or PNG only.',
+      invalidImageType: 'Please choose a JPG, JPEG, or PNG image.',
+      imageTooLarge: 'Image is too large (max 5 MB). Choose a smaller file.',
+      imageCompressFailed: 'Could not process the image. Try another file.',
+      uploadFailed: 'Failed to save shop logo',
+      clearFailed: 'Failed to clear shop logo',
     },
     language: {
       title: 'System language',
@@ -55,8 +65,8 @@ export const en = {
     },
     timezone: {
       title: 'Timezone',
-      hint: 'Wall-clock time for transaction dates, lists, and database timestamps.',
-      rolloutHint: 'Default: Asia/Hong_Kong. Affects create/modify times and datetime display across the app.',
+      hint: 'Wall-clock time for transaction dates, lists, logs, and database timestamps.',
+      rolloutHint: 'Default: Asia/Hong_Kong. Affects create/modify times, log files, and datetime display across the app.',
     },
     idle: {
       title: 'Idle timeout (minutes)',

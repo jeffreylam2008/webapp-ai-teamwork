@@ -17,6 +17,7 @@ import { usePaymentMethods } from '@/hooks/usePaymentMethods';
 import { usePaymentTerms } from '@/hooks/usePaymentTerms';
 import { useRouter } from 'next/navigation';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getSupplierTexts } from './i18n';
 
 interface Supplier {
@@ -40,6 +41,7 @@ const SuppliersContent: React.FC = () => {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getSupplierTexts(lang), [lang]);
+  const { can, loading: permissionsLoading } = usePermissions();
   const [pageMessage, setPageMessage] = useState<{ type: 'success' | 'error' | null; text: string | null }>({ type: null, text: null });
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -218,6 +220,15 @@ const SuppliersContent: React.FC = () => {
 
   return (
     <div>
+      {permissionsLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px' }}>
+          <Spin size="large" />
+        </div>
+      ) : !can('view_supplier') ? (
+        <div className="px-8 py-6 text-gray-600">
+          {lang === 'zh-Hant' ? '您沒有權限檢視此頁面。' : 'You do not have permission to view this page.'}
+        </div>
+      ) : (
       <DataTableLayout
         uiLabels={t.dataTable}
         breadcrumbItems={[
@@ -263,10 +274,11 @@ const SuppliersContent: React.FC = () => {
         pagination={pagination}
         onChange={handleTableChange as (pagination: unknown, filters: unknown, sorter: unknown) => void}
         onRefresh={refreshData}
-        onAdd={handleAdd}
-        onEdit={handleEdit as (record: unknown) => void}
-        onDelete={handleDelete as (record: unknown) => void}
+        onAdd={can('create_supplier') ? handleAdd : undefined}
+        onEdit={can('view_supplier') || can('edit_supplier') ? (handleEdit as (record: unknown) => void) : undefined}
+        onDelete={can('delete_supplier') ? (handleDelete as (record: unknown) => void) : undefined}
       />
+      )}
     </div>
   );
 };

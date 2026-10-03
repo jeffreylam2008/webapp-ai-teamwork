@@ -48,6 +48,7 @@ export const en = {
   },
   actions: {
     viewOrder: 'View Order',
+    cloneOrder: 'Copy to new order',
     confirmOrder: 'Confirm Order',
     voidOrder: 'Void order',
     createInvoice: 'Create Invoice',
@@ -56,6 +57,7 @@ export const en = {
     Draft: 'Draft',
     Active: 'Active',
     Settled: 'Settled',
+    Converted: 'Converted',
     Void: 'Void',
     Confirmed: 'Confirmed',
   },
@@ -87,7 +89,7 @@ export const en = {
     errorDiscard: 'Error discarding transaction',
     confirmTitle: 'Confirm sales order?',
     confirmContent: (code: string) =>
-      `You are about to confirm sales order "${code}". Warehouse stock will be deducted and the order will be marked as settled. This cannot be undone. Do you want to continue?`,
+      `You are about to confirm sales order "${code}". Stock will stay reserved and the order will be marked as confirmed. Warehouse quantity is deducted when the delivery note is created. This cannot be undone. Do you want to continue?`,
     confirmOk: 'Confirm order',
     confirmCancel: 'Cancel',
     confirmFailed: 'Failed to confirm sales order',
@@ -103,6 +105,9 @@ export const en = {
     createInvoiceStarted: 'Preparing invoice from sales order…',
     createInvoiceFailed: 'Failed to create invoice from sales order',
     invoiceSessionNotReady: 'Invoice session is not ready. Please try again.',
+    cloneStarted: 'Copying sales order…',
+    failedClone: 'Failed to copy sales order',
+    errorClone: 'Error copying sales order',
   },
   print: {
     documentTitle: 'Sales Order',
@@ -162,6 +167,7 @@ export const en = {
     },
     voidOrder: 'Void order',
     createInvoice: 'Create Invoice',
+    cloneOrder: 'Copy to new order',
     voidConfirmTitle: 'Void this sales order?',
     voidConfirmBody: 'This order will be marked void and cannot be used for fulfilment.',
     voidConfirmWithQuotation:

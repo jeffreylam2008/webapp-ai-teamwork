@@ -13,6 +13,7 @@ import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { usePermissions } from '@/hooks/usePermissions';
 import { buildWarehouseStockPrefixList } from '@/config/transactionPermissions';
 import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
+import { formatWarehouseLabel } from '@/lib/resolveOperatingWarehouse';
 import {
   getTransactionDetailStatusKey,
   transactionDetailReferenceLink,
@@ -40,6 +41,9 @@ interface TransactionHeader {
   total?: number;
   employee_code?: string;
   shop_code?: string;
+  shop_name?: string;
+  wh_code?: string;
+  wh_name?: string;
   remark?: string;
   is_void?: number;
   is_convert?: number;
@@ -534,6 +538,12 @@ function TransactionDetailContent() {
                   <TransactionDetailBorderedDescriptions.Item label={t.detail.labelCustCode}>{header.cust_code || '-'}</TransactionDetailBorderedDescriptions.Item>
                   <TransactionDetailBorderedDescriptions.Item label={t.detail.labelSuppCode}>{header.supp_code || '-'}</TransactionDetailBorderedDescriptions.Item>
                   <TransactionDetailBorderedDescriptions.Item label={t.detail.labelShopCode}>{header.shop_code || '-'}</TransactionDetailBorderedDescriptions.Item>
+                  <TransactionDetailBorderedDescriptions.Item label={t.detail.labelWarehouse}>
+                    {formatWarehouseLabel(
+                      header.wh_code || header.shop_code,
+                      header.wh_name || header.shop_name
+                    ) || '-'}
+                  </TransactionDetailBorderedDescriptions.Item>
                   <TransactionDetailBorderedDescriptions.Item label={t.detail.labelEmpCode}>{header.employee_code || '-'}</TransactionDetailBorderedDescriptions.Item>
                 </TransactionDetailBorderedDescriptions>
               </TransactionDetailInfoCard>

@@ -6,8 +6,10 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
 import { getHubPagesTexts } from '@/lib/i18n/hubPages';
+import { canAccessSettingsMenu } from '@/config/transactionPermissions';
 
 const { Title, Paragraph } = Typography;
 
@@ -17,6 +19,11 @@ export default function AdministrationHomePage() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const bc = getBreadcrumbLabels(lang);
   const t = getHubPagesTexts(lang).administrationHub;
+  const { can } = usePermissions();
+  const canViewMasterData = can('view_master_data');
+  const canViewSettings = canAccessSettingsMenu(can);
+  const canViewUsers = can('view_users');
+  const canViewSystem = can('view_system');
 
   return (
     <BasicPageLayout
@@ -45,6 +52,7 @@ export default function AdministrationHomePage() {
     >
       <div className="px-8 py-6 bg-white">
         <Row gutter={[24, 24]}>
+          {canViewUsers && (
           <Col xs={24} md={8}>
             <Card
               hoverable
@@ -58,6 +66,7 @@ export default function AdministrationHomePage() {
               </div>
             </Card>
           </Col>
+          )}
 
           <Col xs={24} md={8}>
             <Card
@@ -73,6 +82,7 @@ export default function AdministrationHomePage() {
             </Card>
           </Col>
 
+          {canViewSettings && (
           <Col xs={24} md={8}>
             <Card
               hoverable
@@ -86,7 +96,9 @@ export default function AdministrationHomePage() {
               </div>
             </Card>
           </Col>
+          )}
 
+          {canViewMasterData && (
           <Col xs={24} md={8}>
             <Card
               hoverable
@@ -100,7 +112,9 @@ export default function AdministrationHomePage() {
               </div>
             </Card>
           </Col>
+          )}
 
+          {canViewSystem && (
           <Col xs={24} md={8}>
             <Card
               hoverable
@@ -114,6 +128,7 @@ export default function AdministrationHomePage() {
               </div>
             </Card>
           </Col>
+          )}
 
           <Col xs={24} md={8}>
             <Card

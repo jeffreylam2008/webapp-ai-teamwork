@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { importMasterData, type ImportMode, type MasterDataType, parseUploadedMasterFile } from '@/lib/masterDataImportExport';
 import { systemLogger } from '@/lib/simple-logger';
+import {
+  forbiddenResponse,
+  getAuthenticatedPermissionKeys,
+} from '@/lib/transactionPermissionAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,6 +13,12 @@ export async function POST(request: NextRequest) {
       request.headers.get('x-forwarded-for')?.split(',')?.[0]?.trim() ||
       request.headers.get('x-real-ip')?.trim() ||
       undefined;
+
+    const authResult = await getAuthenticatedPermissionKeys(request);
+    if (!authResult.ok) return authResult.response;
+    if (!authResult.keys.has('view_master_data')) {
+      return forbiddenResponse();
+    }
 
     const token = extractTokenFromRequest(request);
     if (!token) {

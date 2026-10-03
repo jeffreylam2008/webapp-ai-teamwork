@@ -193,6 +193,23 @@ export const warehouseEn = {
     notPO: 'Selected transaction is not a Purchase Order',
     itemQtyIncreased: 'quantity increased',
     itemAdded: 'added',
+    purchaseOrderTitle: 'Select Purchase Order to Receive',
+    purchaseOrderHint:
+      'Select a submitted purchase order for this goods received note. Warehouse is alerted with a GRN number so workers can receive the goods.',
+    loadingPO: 'Loading purchase orders...',
+    selectPO: 'Select a purchase order',
+    noOpenPO:
+      'No open purchase orders available. Submit a purchase order first, then create a GRN.',
+    skip: 'Skip',
+    continue: 'Continue',
+    selectPORequired: 'Please select a purchase order for this GRN.',
+    failedLoadPOList: 'Failed to load purchase orders',
+    failedPrepare: 'Failed to prepare GRN from purchase order',
+    unknownSupplier: 'Unknown supplier',
+    receiveAlertTitle: 'GRN number assigned — receive goods',
+    receiveAlertBody: (grn: string, po: string) =>
+      `GRN ${grn} is ready. Receive goods for purchase order ${po}.`,
+    receiveAlertOk: 'Receive goods',
   },
   adjustment: {
     breadcrumbSegment: 'Adjustment',

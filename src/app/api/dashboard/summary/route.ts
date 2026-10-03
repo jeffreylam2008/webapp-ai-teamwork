@@ -5,6 +5,7 @@ import {
   getAuthenticatedPermissionKeys,
 } from '@/lib/transactionPermissionAuth';
 import { pendingSoForDnCountQuery } from '@/lib/pendingDeliverySalesOrders';
+import { pendingPoForGrnCountQuery } from '@/lib/pendingGrnPurchaseOrders';
 import { canAccessWarehouseStockMenu } from '@/config/transactionPermissions';
 import {
   PREFIX_REF,
@@ -39,6 +40,7 @@ export async function GET(request: NextRequest) {
     const keys = authResult.keys;
     const can = (key: string) => keys.has(key);
     const shopCode = authResult.shopCode;
+    if (!shopCode) return shopScopeRequiredResponse();
 
     const { start: monthStart, end: monthEnd } = monthBounds();
 
@@ -113,11 +115,16 @@ export async function GET(request: NextRequest) {
       userCount = Number(result.data?.[0]?.total || 0);
     }
 
-    // Warehouse pending: confirmed SO waiting for delivery note (this shop)
+    // Warehouse pending: confirmed SO waiting for DN + submitted PO waiting for GRN
     if (canWarehouse || can('view_delivery_note') || canSalesOrder) {
       const countQ = pendingSoForDnCountQuery(shopCode);
       const result = await dbService.query<{ c: number }>(countQ.sql, countQ.params);
       warehousePending = Number(result.data?.[0]?.c || 0);
+    }
+    if (canWarehouse || can('view_grn')) {
+      const countQ = pendingPoForGrnCountQuery(shopCode);
+      const result = await dbService.query<{ c: number }>(countQ.sql, countQ.params);
+      warehousePending = (warehousePending ?? 0) + Number(result.data?.[0]?.c || 0);
     }
 
     // Draft sales orders
@@ -177,6 +184,7 @@ export async function GET(request: NextRequest) {
         sales_report: can('view_sales_report'),
         warehouse_report: can('view_warehouse_report'),
         invoice: can('view_invoice'),
+        monthly_invoice: can('view_monthly_invoice'),
         quotation: can('view_quotation'),
         grn: can('view_grn'),
         delivery_note: can('view_delivery_note'),

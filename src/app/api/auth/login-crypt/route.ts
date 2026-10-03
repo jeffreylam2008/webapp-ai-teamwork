@@ -10,7 +10,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { username, password } = body;
+    const { username, password, shop_code } = body;
+    const requestedShopCode = typeof shop_code === 'string' && shop_code.trim() ? shop_code.trim() : null;
 
     // Validate input
     if (!username || !password) {
@@ -20,14 +21,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[AUTH-CRYPT] Login attempt for username:', username);
+    console.log('[AUTH-CRYPT] Login attempt for username:', username, 'shop_code:', requestedShopCode);
 
-    // Query employee from database
+    // Username is unique per company/shop — scope lookup the same way as /api/auth/login
     const result = await dbService.query(
-      `SELECT uid, employee_code, username, password, default_shopcode, role_code, status 
-       FROM t_employee 
-       WHERE username = ? AND status = 1`,
-      [username]
+      requestedShopCode
+        ? `SELECT uid, employee_code, username, password, default_shopcode, role_code, status
+           FROM t_employee
+           WHERE username = ? AND default_shopcode = ? AND status = 1
+           LIMIT 1`
+        : `SELECT uid, employee_code, username, password, default_shopcode, role_code, status
+           FROM t_employee
+           WHERE username = ? AND status = 1`,
+      requestedShopCode ? [username, requestedShopCode] : [username]
     );
 
     if (!result.data || result.data.length === 0) {
@@ -38,10 +44,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!requestedShopCode && result.data.length > 1) {
+      console.log('[AUTH-CRYPT] Ambiguous username across companies; shop required:', username);
+      return NextResponse.json(
+        { success: false, error: 'Please select a company/shop to sign in' },
+        { status: 400 }
+      );
+    }
+
     const employee = result.data[0];
     console.log('[AUTH-CRYPT] Found employee:', { 
       uid: employee.uid, 
       username: employee.username,
+      default_shopcode: employee.default_shopcode,
       passwordFormat: employee.password.substring(0, 3)
     });
 
@@ -75,6 +90,8 @@ export async function POST(request: NextRequest) {
 
     console.log('[AUTH-CRYPT] Password verified successfully');
 
+    const finalShopCode = requestedShopCode || employee.default_shopcode;
+
     // Update last login
     await dbService.query(
       `UPDATE t_employee SET last_login = NOW() WHERE uid = ?`,
@@ -88,6 +105,7 @@ export async function POST(request: NextRequest) {
         employee_code: employee.employee_code,
         username: employee.username,
         default_shopcode: employee.default_shopcode,
+        selected_shopcode: finalShopCode,
         role_code: employee.role_code
       },
       JWT_SECRET,
@@ -107,10 +125,10 @@ export async function POST(request: NextRequest) {
     await dbService.query(
       `INSERT INTO t_login (username, shop_code, token, status, create_date, modify_date) 
        VALUES (?, ?, ?, 'in', NOW(), NOW())`,
-      [employee.username, employee.default_shopcode, tokenForLogin]
+      [employee.username, finalShopCode, tokenForLogin]
     );
 
-    console.log('[AUTH-CRYPT] Login successful for user:', username);
+    console.log('[AUTH-CRYPT] Login successful for user:', username, 'shop:', finalShopCode);
     console.log('[AUTH-CRYPT] Token recorded in t_login table');
 
     // Return success response without password
@@ -122,7 +140,10 @@ export async function POST(request: NextRequest) {
       message: 'Login successful',
       data: {
         token,
-        user: userWithoutPassword
+        user: {
+          ...userWithoutPassword,
+          selected_shopcode: finalShopCode,
+        }
       }
     });
     const isHttps = isRequestHttps(request);

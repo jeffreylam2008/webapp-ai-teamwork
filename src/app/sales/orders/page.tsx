@@ -13,11 +13,13 @@ import {
   FileTextOutlined,
   FileAddOutlined,
   ExclamationCircleOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import {
   createInvoiceFromSalesOrder,
   getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
+import { cloneSalesOrder, getOrCreateOrderBrowserSessionId } from '@/lib/cloneSalesOrder';
 import { Modal, Button, DatePicker, Space, App, Tooltip, Spin } from 'antd';
 import DraggableColumnsTable from '@/components/DraggableColumnsTable';
 import PageLoadingCenter from '@/components/PageLoadingCenter';
@@ -92,6 +94,7 @@ export default function OrdersPage() {
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [voidingId, setVoidingId] = useState<number | null>(null);
   const [creatingInvoiceId, setCreatingInvoiceId] = useState<number | null>(null);
+  const [cloningId, setCloningId] = useState<string | null>(null);
 
   // Refs for mount + filter change tracking
   const hasInitialFetch = useRef(false);
@@ -312,6 +315,39 @@ export default function OrdersPage() {
     [can, creatingInvoiceId, messageApi, router, t, token]
   );
 
+  const handleCloneSalesOrder = useCallback(
+    async (orderId: string) => {
+      if (!orderId) {
+        messageApi.error(t.prompts.errorLoadList);
+        return;
+      }
+      const sessionId = getOrCreateOrderBrowserSessionId();
+      if (!sessionId) {
+        messageApi.error(t.prompts.errorClone);
+        return;
+      }
+
+      setCloningId(orderId);
+      messageApi.loading({ content: t.prompts.cloneStarted, key: 'cloneSalesOrder', duration: 0 });
+      try {
+        const newCode = await cloneSalesOrder({
+          sourceOrderCode: orderId,
+          token,
+          browserSessionId: sessionId,
+        });
+        messageApi.destroy('cloneSalesOrder');
+        router.push(`/sales/orders/create/${encodeURIComponent(newCode)}`);
+      } catch (err) {
+        console.error('Error cloning sales order:', err);
+        messageApi.destroy('cloneSalesOrder');
+        messageApi.error(err instanceof Error ? err.message : t.prompts.errorClone);
+      } finally {
+        setCloningId(null);
+      }
+    },
+    [messageApi, router, t, token]
+  );
+
   const displayColumns = useMemo(
     () => [
     {
@@ -358,6 +394,29 @@ export default function OrdersPage() {
                   style={{ verticalAlign: 'middle' }}
                 >
                   <EyeOutlined />
+                </button>
+              </span>
+            </Tooltip>
+            <Tooltip title={t.actions.cloneOrder}>
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  className="w-8 h-8 flex items-center justify-center rounded bg-gray-100 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-800 transition disabled:opacity-50 disabled:pointer-events-none"
+                  aria-label={t.actions.cloneOrder}
+                  onClick={() => void handleCloneSalesOrder(record.transaction_id)}
+                  disabled={
+                    cloningId === record.transaction_id ||
+                    confirmingId === record.uid ||
+                    voidingId === record.uid ||
+                    creatingInvoiceId === record.uid
+                  }
+                  style={{ verticalAlign: 'middle' }}
+                >
+                  {cloningId === record.transaction_id ? (
+                    <span className="inline-block w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <CopyOutlined />
+                  )}
                 </button>
               </span>
             </Tooltip>
@@ -544,7 +603,7 @@ export default function OrdersPage() {
         date ? formatDisplayDateTime(date, lang === 'zh-Hant' ? 'zh-Hant-HK' : 'en-GB') : t.detailLabels.na,
     }
   ],
-    [t, lang, confirmingId, voidingId, creatingInvoiceId, router, handleConfirmSalesOrder, handleVoidSalesOrder, handleCreateInvoiceFromSo, can, messageApi]
+    [t, lang, confirmingId, voidingId, creatingInvoiceId, cloningId, router, handleConfirmSalesOrder, handleVoidSalesOrder, handleCreateInvoiceFromSo, handleCloneSalesOrder, can, messageApi]
   );
 
   const handleRefresh = () => fetchTransactions();

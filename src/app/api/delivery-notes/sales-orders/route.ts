@@ -9,7 +9,7 @@ import { getShopScopeFromAuth, shopScopeRequiredResponse } from '@/lib/shopScope
 
 /**
  * GET /api/delivery-notes/sales-orders
- * Confirmed sales orders not yet linked to a delivery note.
+ * Confirmed sales orders not yet linked to a delivery note (current shop only).
  * Query: countOnly=1 — returns { pending_count } only (for stock page badge).
  */
 export async function GET(request: NextRequest) {

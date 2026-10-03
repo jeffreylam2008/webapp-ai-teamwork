@@ -133,6 +133,18 @@ export function forbiddenResponse(message = 'You do not have permission for this
   return NextResponse.json({ success: false, error: message }, { status: 403 });
 }
 
+export async function requirePermissionKey(
+  request: NextRequest,
+  key: string
+): Promise<AuthOk | AuthFail> {
+  const auth = await getAuthenticatedPermissionKeys(request);
+  if (!auth.ok) return auth;
+  if (!auth.keys.has(key)) {
+    return { ok: false, response: forbiddenResponse() };
+  }
+  return auth;
+}
+
 export function assertDbPrefixPermission(
   keys: Set<string>,
   prefix: string,

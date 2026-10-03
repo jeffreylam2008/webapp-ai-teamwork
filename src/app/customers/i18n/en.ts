@@ -35,6 +35,7 @@ export const en = {
     colName: 'Customer Name',
     colContact: 'Contact Person',
     colPhone: 'Phone',
+    colDistrict: 'District',
     colPaymentMethod: 'Payment Method',
     colStatus: 'Status',
     filterSearch: 'Search',

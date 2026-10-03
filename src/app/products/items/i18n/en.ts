@@ -169,7 +169,7 @@ export const en = {
     },
     warehouseColumns: {
       qty: 'Qty',
-      type: 'Type',
+      shop: 'Shop',
       updated: 'Updated',
     },
     deleteModal: {

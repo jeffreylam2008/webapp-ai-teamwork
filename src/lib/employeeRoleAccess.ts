@@ -111,6 +111,54 @@ export async function ensureEmployeeAccessDefaultTable(): Promise<void> {
       );
     }
   }
+
+  // Backfill live employee access for newly added function rows (e.g. monthly_invoice).
+  // Copy flags from invoice when present so existing invoice users keep monthly access until edited.
+  try {
+    await dbService.query(`
+      INSERT IGNORE INTO t_employee_access
+        (employee_code, shop_code, \`function\`, sub_function, a_create, a_edit, a_delete, a_view)
+      SELECT
+        employee_code,
+        shop_code,
+        'monthly_invoice',
+        COALESCE(sub_function, ''),
+        a_create,
+        a_edit,
+        a_delete,
+        a_view
+      FROM t_employee_access
+      WHERE \`function\` = 'invoice'
+    `);
+  } catch {
+    // Table/schema may differ; ignore
+  }
+
+  // Backfill master-data functions (customer/supplier/item/category) from each employee's role defaults.
+  try {
+    await dbService.query(`
+      INSERT IGNORE INTO t_employee_access
+        (employee_code, shop_code, \`function\`, sub_function, a_create, a_edit, a_delete, a_view)
+      SELECT
+        e.employee_code,
+        COALESCE(NULLIF(TRIM(e.default_shopcode), ''), 'HQ01'),
+        d.\`function\`,
+        '',
+        d.a_create,
+        d.a_edit,
+        d.a_delete,
+        d.a_view
+      FROM t_employee e
+      INNER JOIN t_employee_access_default d ON d.role_code = e.role_code
+      WHERE d.\`function\` IN (
+        'customer', 'supplier', 'item', 'category', 'item_type', 'master_data',
+        'district', 'prefix', 'payment_method', 'payment_term', 'shop',
+        'users', 'system'
+      )
+    `);
+  } catch {
+    // Table/schema may differ; ignore
+  }
 }
 
 export async function listEmployeeRoles(options?: {

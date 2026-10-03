@@ -14,15 +14,15 @@ import {
 import { Button, Form, Input, type InputRef, Select, InputNumber, Card, Row, Col, App, Space, Divider, DatePicker, Modal, Table } from 'antd';
 import dayjs from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
+import { PREFIX_REF } from '@/lib/prefixRef';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getSalesOrderCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getCommonLanguageTexts } from '@/lib/i18n/common';
 import { formatCurrency } from '@/utils/formatCurrency';
-import { PREFIX_REF } from '@/lib/prefixRef';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
 import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import {
@@ -31,7 +31,7 @@ import {
   ORDER_SESSION_KEY,
   ORDER_BASE_PATH,
 } from '@/features/orders/orderModule';
-import { ensureBrowserSessionId } from '@/lib/transactionDraft';
+import { ensureBrowserSessionId, isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 
 interface FormData {
   customers: Array<{ cust_code: string; name: string; phone_1: string; email_1: string; pm_code?: string | null }>;
@@ -75,7 +75,17 @@ export default function CreateOrderPage() {
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
 
-  const requestBackOrDiscard = useBackNavigation(() => setShowDiscardModal(true));
+  const requestBackOrDiscard = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: isGeneratedTransactionNumber(isDraft ? reservedTransCode : transCode),
+    fallbackPath: ORDER_BASE_PATH,
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem(ORDER_SESSION_KEY);
+    },
+  });
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getSalesOrderCreateTexts(lang);
   const commonT = getCommonLanguageTexts(lang);
@@ -102,6 +112,7 @@ export default function CreateOrderPage() {
 
     form.setFieldsValue({
       ...(isDraft ? {} : { trans_code: transCode }),
+      trans_code: transCode,
       prefix_ref: PREFIX_REF.SO,
       transaction_date: dayjs(),
     });
@@ -117,55 +128,68 @@ export default function CreateOrderPage() {
     }
   }, [formData, user, form]);
 
-  // Show leave warning when side menu navigates away
   useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
+    if (!transCode || !formData) return;
+    const key = `order_clone_${transCode}`;
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const clone = JSON.parse(raw) as {
+        header?: Record<string, unknown>;
+        details?: Array<{
+          item_code?: string;
+          eng_name?: string;
+          chi_name?: string;
+          qty?: number;
+          unit?: string;
+          price?: number;
+          discount?: number;
+        }>;
+      };
+      sessionStorage.removeItem(key);
 
-  // Intercept all navigation (breadcrumb, links, etc.) to show leave warning
-  useEffect(() => {
-    const originalPush = router.push.bind(router) as typeof router.push;
-    const originalReplace = router.replace.bind(router) as typeof router.replace;
+      const h = clone.header || {};
+      const cust = String(h.cust_code || '');
+      if (cust) {
+        const c = formData.customers.find((x) => x.cust_code === cust);
+        if (c) setSelectedCustomer({ cust_code: c.cust_code, name: c.name, pm_code: c.pm_code ?? null });
+      }
 
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
+      form.setFieldsValue({
+        cust_code: h.cust_code ?? undefined,
+        shop_code: h.shop_code ?? undefined,
+        refer_code: h.refer_code ?? undefined,
+        quotation_code: h.quotation_code ?? undefined,
+        remark: h.remark ?? undefined,
+        pm_code: h.pm_code ?? undefined,
+      });
 
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
+      if (clone.details?.length) {
+        setLineItems(
+          clone.details.map((d, i) => {
+            const qty = Number(d.qty || 0);
+            const price = Number(d.price || 0);
+            const discount = Number(d.discount || 0);
+            const lineSubtotal = qty * price;
+            const discountAmount = lineSubtotal * (discount / 100);
+            return {
+              uid: i + 1,
+              item_code: String(d.item_code || ''),
+              eng_name: String(d.eng_name || ''),
+              chi_name: String(d.chi_name || ''),
+              qty,
+              unit: String(d.unit || ''),
+              price,
+              discount,
+              line_total: lineSubtotal - discountAmount,
+            };
+          })
+        );
       }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
+    } catch (error) {
+      console.error('Failed to apply cloned sales order:', error);
+    }
+  }, [transCode, formData, form]);
 
   const fetchFormData = async () => {
     try {

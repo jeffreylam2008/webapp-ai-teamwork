@@ -9,6 +9,8 @@ import { useDataTable } from '@/hooks/useDataTable';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { usePermissions } from '@/hooks/usePermissions';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 import { getPrefixTexts } from './i18n';
 
 interface Prefix {
@@ -28,6 +30,8 @@ export default function PrefixPage() {
   const { token } = useAuth();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getPrefixTexts(lang), [lang]);
+  const { can } = usePermissions();
+  const canView = can('view_prefix');
 
   const STATUS_OPTIONS = useMemo(
     () => [
@@ -271,10 +275,11 @@ export default function PrefixPage() {
           ]}
         />
       }
-      buttonBar={PrefixesButtonBar}
+      buttonBar={canView ? PrefixesButtonBar : undefined}
       title={t.page.title}
       description={t.page.description}
     >
+      <RequireViewPermission permission="view_prefix" lang={lang}>
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
           <div
@@ -431,6 +436,7 @@ export default function PrefixPage() {
           </div>
         </Form>
       </Modal>
+      </RequireViewPermission>
     </BasicPageLayout>
   );
 }

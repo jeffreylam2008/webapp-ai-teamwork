@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const customersResult = await dbService.query(
       `SELECT cust_code, name, phone_1, email_1, pm_code 
        FROM t_customers 
+       WHERE UPPER(TRIM(COALESCE(status, ''))) = 'ACTIVE'
        ORDER BY name ASC`
     );
 
@@ -72,10 +73,11 @@ export async function GET(request: NextRequest) {
        ORDER BY payment_method ASC`
     );
 
-    // Fetch suppliers (for purchase orders)
+    // Fetch suppliers (for purchase orders) — only active / enabled
     const suppliersResult = await dbService.query(
       `SELECT supp_code, name, phone_1, email_1, pm_code 
        FROM t_suppliers 
+       WHERE UPPER(TRIM(COALESCE(status, ''))) = 'ACTIVE'
        ORDER BY name ASC`
     );
 

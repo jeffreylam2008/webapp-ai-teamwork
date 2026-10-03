@@ -4,7 +4,8 @@ import dbService from '@/lib/database';
 /**
  * GET /api/warehouse/current-stock?item_codes=A,B,C
  * Returns current stock per item = t_warehouse.qty + SUM(t_warehouse_stage.qty).
- * Draft SO reservations use t_warehouse_stage rows with type `hold` and negative qty.
+ * Draft and confirmed SO reservations use t_warehouse_stage rows with type `hold` and negative qty
+ * until a delivery note consumes them.
  */
 export async function GET(request: NextRequest) {
   try {

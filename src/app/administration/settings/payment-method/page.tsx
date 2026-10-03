@@ -9,6 +9,8 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { EyeOutlined, DeleteOutlined, ExclamationCircleOutlined, PlusOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
 import { Modal, Form, Input, Table, Button, Spin } from 'antd';
 import { useDataTable } from '@/hooks/useDataTable';
+import { usePermissions } from '@/hooks/usePermissions';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 
 interface PaymentMethod {
   pm_code: string;
@@ -25,6 +27,8 @@ function PaymentMethodPageContent() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const bc = useMemo(() => getBreadcrumbLabels(lang), [lang]);
   const pl = useMemo(() => getAdminPagesTexts(lang).paymentMethodList, [lang]);
+  const { can } = usePermissions();
+  const canView = can('view_payment_method');
 
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -299,10 +303,11 @@ function PaymentMethodPageContent() {
           ]} 
         />
       }
-      buttonBar={PaymentMethodsButtonBar}
+      buttonBar={canView ? PaymentMethodsButtonBar : undefined}
       title={pl.title}
       description={pl.description}
     >
+      <RequireViewPermission permission="view_payment_method" lang={lang}>
       {/* Message Section */}
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
@@ -508,6 +513,7 @@ function PaymentMethodPageContent() {
           </div>
         </Form>
       </Modal>
+      </RequireViewPermission>
     </BasicPageLayout>
   );
 }

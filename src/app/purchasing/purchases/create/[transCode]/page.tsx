@@ -16,7 +16,7 @@ import dayjs from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { getPurchaseOrderCreateTexts } from './i18n';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
@@ -25,7 +25,7 @@ import { PREFIX_REF } from '@/lib/prefixRef';
 import QuickItemCodeSearchBar from '@/components/QuickItemCodeSearchBar';
 import { calcLineTotal, normalizeItemCode, type QuickItemProduct } from '@/lib/transactionLineItems';
 import { getPurchaseDefaultPrice } from '@/lib/itemPricing';
-import { ensureBrowserSessionId } from '@/lib/transactionDraft';
+import { ensureBrowserSessionId, isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 import {
   isPurchaseDraftTransCode,
   reservePurchaseNumber,
@@ -77,7 +77,17 @@ export default function CreatePurchaseOrderPage() {
   const allowNavigationRef = useRef(false);
   const warehouseManuallySetRef = useRef(false);
 
-  const requestBackOrDiscard = useBackNavigation(() => setShowDiscardModal(true));
+  const requestBackOrDiscard = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: isGeneratedTransactionNumber(isDraft ? reservedTransCode : transCode),
+    fallbackPath: PURCHASE_BASE_PATH,
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem(PURCHASE_SESSION_KEY);
+    },
+  });
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getPurchaseOrderCreateTexts(lang);
 
@@ -197,56 +207,6 @@ export default function CreatePurchaseOrderPage() {
       console.error(e);
     }
   }, [transCode, formData, form]);
-
-  // Show leave warning when side menu navigates away
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
-
-  // Intercept all navigation (breadcrumb, links, etc.) to show leave warning
-  useEffect(() => {
-    const originalPush = router.push.bind(router) as typeof router.push;
-    const originalReplace = router.replace.bind(router) as typeof router.replace;
-
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
 
   const fetchFormData = async () => {
     try {

@@ -55,7 +55,6 @@ export function normalizeTimezone(value: unknown): string {
 
   if (ALLOWED_TIMEZONES.has(raw) && isValidTimezone(raw)) return raw;
 
-  // Accept any valid IANA name from DB even if not in dropdown
   if (isValidTimezone(raw)) return raw;
 
   return DEFAULT_TIMEZONE;

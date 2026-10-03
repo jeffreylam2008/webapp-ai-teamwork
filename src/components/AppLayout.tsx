@@ -765,7 +765,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
               />
             )}
           </Layout.Sider>
-          <Layout style={{ minWidth: 0, flex: 1 }}>
+          <Layout style={{ minWidth: 0, flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <Layout.Header className="app-header">
               <Button
                 type="primary"

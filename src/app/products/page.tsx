@@ -1,10 +1,11 @@
 'use client';
-import { Typography, Card, Row, Col } from 'antd';
+import { Typography, Card, Row, Col, Spin } from 'antd';
 import { AppstoreOutlined, TagsOutlined, ClusterOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
 import { getHubPagesTexts } from '@/lib/i18n/hubPages';
 
@@ -16,6 +17,34 @@ export default function ProductsPage() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const bc = getBreadcrumbLabels(lang);
   const t = getHubPagesTexts(lang).productsHub;
+  const { can, loading: permissionsLoading } = usePermissions();
+
+  const cards = [
+    {
+      key: 'items',
+      href: '/products/items',
+      icon: <AppstoreOutlined style={{ fontSize: '48px', color: '#1890ff', marginBottom: '16px' }} />,
+      title: t.cardItemsTitle,
+      desc: t.cardItemsDesc,
+      visible: can('view_item'),
+    },
+    {
+      key: 'categories',
+      href: '/products/categories',
+      icon: <TagsOutlined style={{ fontSize: '48px', color: '#52c41a', marginBottom: '16px' }} />,
+      title: t.cardCategoriesTitle,
+      desc: t.cardCategoriesDesc,
+      visible: can('view_category'),
+    },
+    {
+      key: 'item-types',
+      href: '/products/item-types',
+      icon: <ClusterOutlined style={{ fontSize: '48px', color: '#722ed1', marginBottom: '16px' }} />,
+      title: t.cardItemTypesTitle,
+      desc: t.cardItemTypesDesc,
+      visible: can('view_item_type'),
+    },
+  ].filter((c) => c.visible);
 
   return (
     <BasicPageLayout

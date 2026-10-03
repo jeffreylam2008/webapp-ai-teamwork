@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { HtmlPrintTemplate } from './HtmlPrintTemplate';
-import { PRINT_TEMPLATE_IDS } from './printTemplateRegistry';
 import type { PrintTemplateId } from './printTemplateRegistry';
 import type { PrintPaymentTotal, PrintTransactionDetail, PrintTransactionHeader } from './types';
 

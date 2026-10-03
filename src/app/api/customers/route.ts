@@ -54,7 +54,8 @@ export async function GET(request: NextRequest) {
       'create_date', 'modify_date', 
       'remark', 'statement_remark', 
       'email_1', 'email_2',
-      'payment_method', 'payment_term' // from JOINs with t_payment_method, t_payment_term
+      'payment_method', 'payment_term', // from JOINs with t_payment_method, t_payment_term
+      'district_eng', 'district_chi', // from JOIN with t_district
     ];
 
     // Modify the default fields to always include email fields and pm_code for list display
@@ -68,7 +69,8 @@ export async function GET(request: NextRequest) {
       'phone_2',
       'fax_2',
       'pm_code',
-      'pt_code'
+      'pt_code',
+      'district_code',
     ];
 
     const emailFields = [
@@ -95,14 +97,18 @@ export async function GET(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Build SELECT: customer columns with c. prefix, and joined names (exclude payment_method/payment_term from c. list; we add them from JOINs)
-    const customerOnlyFields = selectedFields.filter(f => f !== 'payment_method' && f !== 'payment_term');
+    // Build SELECT: customer columns with c. prefix, and joined names (exclude payment_method/payment_term/district names from c. list; we add them from JOINs)
+    const customerOnlyFields = selectedFields.filter(
+      (f) => f !== 'payment_method' && f !== 'payment_term' && f !== 'district_eng' && f !== 'district_chi'
+    );
     const selectList = customerOnlyFields.map(f => `c.${f}`).join(', ');
-    const joinSelect = ' pm.payment_method AS payment_method, pt.terms AS payment_term';
+    const joinSelect =
+      ' pm.payment_method AS payment_method, pt.terms AS payment_term, d.district_eng AS district_eng, d.district_chi AS district_chi';
     let query = `SELECT ${selectList},${joinSelect}
       FROM t_customers c
       LEFT JOIN t_payment_method pm ON c.pm_code = pm.pm_code
-      LEFT JOIN t_payment_term pt ON c.pt_code = pt.pt_code`;
+      LEFT JOIN t_payment_term pt ON c.pt_code = pt.pt_code
+      LEFT JOIN t_district d ON c.district_code = d.district_code`;
     // Alias `c` so WHERE qualifies customer columns. Required when JOINing
     // t_payment_method (also has pm_code) to avoid "Column 'pm_code' in WHERE is ambiguous".
     let countQuery = 'SELECT COUNT(*) as total FROM t_customers c';

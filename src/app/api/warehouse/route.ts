@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
+import { ensureWarehouseNoTypeColumn } from '@/lib/ensureWarehouseNoTypeColumn';
 import { userActionLogger } from '@/lib/simple-logger';
 import { getUserFromRequest } from '@/lib/user-context';
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureWarehouseNoTypeColumn();
     const userContext = getUserFromRequest(request);
     const { searchParams } = new URL(request.url);
     const itemCode = searchParams.get('item_code');
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
         uid,
         item_code,
         qty as stock_on_hand,
-        type,
+        shop_code,
         create_date,
         modify_date
       FROM t_warehouse 

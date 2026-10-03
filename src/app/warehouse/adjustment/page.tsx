@@ -14,7 +14,8 @@ import dayjs from 'dayjs';
 import { TransactionSession } from '@/services/transactionGenerator';
 import { getCurrentSuffix } from '@/utils/transactionUtils';
 import { PREFIX_REF } from '@/lib/prefixRef';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
+import { isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -105,6 +106,18 @@ function AdjustmentPageContent() {
   const allowNavigationRef = useRef(false);
   /** Avoid duplicate /transaction-generator/next per session (e.g. React Strict Mode). */
   const adjGenerateInitializedRef = useRef<string | null>(null);
+
+  const handleBackToStock = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: !isEditMode && isGeneratedTransactionNumber(transactionSession?.transactionCode),
+    fallbackPath: '/warehouse/stock',
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem('adj_session_id');
+    },
+  });
 
   const generateBrowserSessionId = (): string => {
     const timestamp = Date.now().toString(36);
@@ -223,51 +236,6 @@ function AdjustmentPageContent() {
       router.push('/warehouse/stock');
     }
   };
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
-
-  useEffect(() => {
-    const originalPush = router.push.bind(router);
-    const originalReplace = router.replace.bind(router);
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as string, options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as string, options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as string, options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as string, options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
 
   const loadShops = useCallback(async () => {
     const response = await fetch('/api/shops?warehouseOnly=1');
@@ -416,17 +384,6 @@ function AdjustmentPageContent() {
 
   const showDiscardConfirm = () => setShowDiscardModal(true);
   const showVoidConfirm = () => setShowVoidModal(true);
-
-  const handleBackToStock = () => {
-    if (isEditMode) {
-      allowNavigationRef.current = true;
-      router.push('/warehouse/stock');
-    } else {
-      showDiscardConfirm();
-    }
-  };
-
-  useBackNavigation(handleBackToStock);
 
   const handleVoid = async () => {
     if (!isEditMode || !editTransCode) return;

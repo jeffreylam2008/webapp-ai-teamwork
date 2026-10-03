@@ -7,6 +7,7 @@ import { getAdminPagesTexts } from '@/lib/i18n/adminPages';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { usePermissions } from '@/hooks/usePermissions';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
 import { Card, Col, message, Row, Space, Typography, Upload, Button, Spin } from 'antd';
@@ -56,6 +57,8 @@ function MasterDataImportExportContent() {
   }, [md]);
   const goBackToSettings = useBackNavigation(() => router.push('/administration/settings'));
   const { token } = useAuth();
+  const { can, loading: permissionsLoading } = usePermissions();
+  const canViewMasterData = can('view_master_data');
 
   const [filesByType, setFilesByType] = useState<Record<MasterDataType, File | null>>({
     customers: null,
@@ -205,6 +208,15 @@ function MasterDataImportExportContent() {
       title={md.title}
       description={md.description}
     >
+      {permissionsLoading ? (
+        <div className="px-8 py-16 flex justify-center">
+          <Spin size="large" />
+        </div>
+      ) : !canViewMasterData ? (
+        <div className="px-8 py-6 text-gray-600">
+          {lang === 'zh-Hant' ? '您沒有權限檢視此頁面。' : 'You do not have permission to view this page.'}
+        </div>
+      ) : (
       <div className="px-4 py-6 bg-white">
         <div className="mb-4 flex flex-wrap gap-3 items-center justify-between">
           <Space wrap>
@@ -303,6 +315,7 @@ function MasterDataImportExportContent() {
           ) : null}
         </div>
       </div>
+      )}
     </BasicPageLayout>
   );
 }

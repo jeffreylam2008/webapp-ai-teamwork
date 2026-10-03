@@ -12,6 +12,7 @@ import { Modal, message, Form, Input, InputNumber, Select, Upload, Button, Table
 import { formatCurrency } from '@/utils/formatCurrency';
 import { prepareItemImageFileForUpload } from '@/lib/itemImageUpload';
 import { clearTransactionFormDataCache } from '@/hooks/useTransactionFormData';
+import { usePermissions } from '@/hooks/usePermissions';
 
 interface DbItem {
   uid: number;
@@ -39,6 +40,7 @@ export default function ProductsItemsPage() {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getProductItemTexts(lang), [lang]);
+  const { can, loading: permissionsLoading } = usePermissions();
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -112,6 +114,7 @@ export default function ProductsItemsPage() {
       align: 'left' as const,
       render: (_: unknown, record: DbItem) => (
         <div className="flex flex-row items-center justify-start gap-2">
+          {(can('view_item') || can('edit_item')) && (
           <Tooltip title={t.actions.edit}>
             <span className="inline-flex">
               <button
@@ -127,6 +130,8 @@ export default function ProductsItemsPage() {
               </button>
             </span>
           </Tooltip>
+          )}
+          {can('delete_item') && (
           <Tooltip title={t.actions.delete}>
             <span className="inline-flex">
               <button
@@ -140,6 +145,7 @@ export default function ProductsItemsPage() {
               </button>
             </span>
           </Tooltip>
+          )}
         </div>
       )
     },
@@ -264,7 +270,7 @@ export default function ProductsItemsPage() {
       },
     }
   ],
-    [t, router, handleDelete]
+    [t, router, handleDelete, can]
   );
 
   const handleAdd = () => {
@@ -392,6 +398,7 @@ export default function ProductsItemsPage() {
   // Function bar for product items actions
   const ProductItemsButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
+      {can('create_item') && (
       <Button 
         type="primary"
         icon={<PlusOutlined />}
@@ -399,6 +406,7 @@ export default function ProductsItemsPage() {
       >
         {t.buttonBar.addItem}
       </Button>
+      )}
       <Button 
         icon={<FilterOutlined />}
         type={filters.search ? "primary" : "default"}
@@ -430,7 +438,7 @@ export default function ProductsItemsPage() {
         { label: t.breadcrumb.products, href: '/products' },
         { label: t.breadcrumb.items, current: true }
       ]} />}
-      buttonBar={ProductItemsButtonBar}
+      buttonBar={can('view_item') ? ProductItemsButtonBar : undefined}
       title={
         typeof pagination.total === 'number'
           ? t.page.titleWithCount(pagination.total)
@@ -438,6 +446,16 @@ export default function ProductsItemsPage() {
       }
       description={t.page.description}
     >
+      {permissionsLoading ? (
+        <div className="px-8 py-16 flex justify-center">
+          <Spin size="large" />
+        </div>
+      ) : !can('view_item') ? (
+        <div className="px-8 py-6 text-gray-600">
+          {lang === 'zh-Hant' ? '您沒有權限檢視此頁面。' : 'You do not have permission to view this page.'}
+        </div>
+      ) : (
+      <>
       {/* Message Section */}
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
@@ -767,6 +785,8 @@ export default function ProductsItemsPage() {
           </div>
         </Form>
       </Modal>
+      </>
+      )}
     </BasicPageLayout>
   );
 }

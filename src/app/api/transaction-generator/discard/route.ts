@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import {
-  generatorSeqQuoted,
   getTransNumGeneratorSchema,
   sequenceFromGeneratorRow,
 } from '@/lib/transNumGeneratorSchema';
 import { parseGeneratedTransactionCode } from '@/utils/transactionUtils';
+import { generatorLookupParams } from '@/middleware/transactionGenerator';
 
 function transactionCodeFromRow(row: Record<string, unknown>, prefix: string, suffix: string, lastNumber: number): string {
   return `${prefix}${suffix}-${lastNumber.toString().padStart(3, '0')}`;
@@ -107,15 +107,11 @@ export async function POST(request: NextRequest) {
 
     if (transactionCode) {
       const parts = parseGeneratedTransactionCode(transactionCode);
-      const seqQ = generatorSeqQuoted(sch);
       const inUse = await isTransactionInUse(transactionCode);
 
-      if (parts && seqQ) {
-        const updatedRows = await applyGeneratorDiscard(
-          `prefix = ? AND suffix = ? AND ${seqQ} = ?`,
-          [parts.prefix, parts.suffix, parts.lastNumber],
-          inUse
-        );
+      if (parts) {
+        const lookup = await generatorLookupParams(parts.prefix, parts.suffix, parts.lastNumber);
+        const updatedRows = await applyGeneratorDiscard(lookup.whereSql, lookup.params, inUse);
         if (updatedRows > 0) {
           return NextResponse.json({
             success: true,
@@ -135,10 +131,11 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      if (parts && seqQ && sch.hasStatus) {
+      if (parts && sch.hasStatus) {
+        const lookup = await generatorLookupParams(parts.prefix, parts.suffix, parts.lastNumber);
         await dbService.query(
-          `UPDATE t_trans_num_generator SET status = "committed" WHERE prefix = ? AND suffix = ? AND ${seqQ} = ?`,
-          [parts.prefix, parts.suffix, parts.lastNumber]
+          `UPDATE t_trans_num_generator SET status = "committed" WHERE ${lookup.whereSql}`,
+          lookup.params
         );
       }
 

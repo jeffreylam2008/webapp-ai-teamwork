@@ -3,13 +3,19 @@ export const en = {
     breadcrumbHome: 'Home',
     breadcrumbWarehouse: 'Warehouse',
     breadcrumbStock: 'Stock',
-    title: 'Stock Transactions (GRN, DN, ST & ADJ)',
+    title: 'Stock Transactions',
     description:
       'View and manage goods received notes, delivery notes and stock transactions',
+    operatingWarehouse: 'Currently operating warehouse',
+    operatingWarehouseForShop: (shop: string) => `Stock location for shop ${shop}`,
+    warehouseNotAssigned: 'This shop has no default warehouse assigned',
+    colWarehouse: 'Warehouse',
     btnGrn: 'GRN',
     btnDeliveryNote: 'Delivery Note',
     dnBadgeTooltip: (count: number) =>
       `${count} confirmed sales order${count === 1 ? '' : 's'} ready for a delivery note`,
+    grnBadgeTooltip: (count: number) =>
+      `${count} purchase order${count === 1 ? '' : 's'} ready for goods received`,
     btnAdjustment: 'Adjustment',
     btnStocktake: 'Stocktake',
     btnRefresh: 'Refresh',
@@ -49,7 +55,7 @@ export const en = {
     showingOf: (shown: number, total: number) =>
       `Showing ${shown} of ${total} transactions`,
     searchPlaceholder:
-      'Search by transaction ID, type, reference, status, shop...',
+      'Search by transaction ID, type, reference, status, shop, warehouse...',
     search: 'Search',
     clear: 'Clear',
     filtersCleared: 'Filters cleared',
@@ -105,6 +111,7 @@ export const en = {
     labelCustCode: 'Customer Code',
     labelSuppCode: 'Supplier Code',
     labelShopCode: 'Shop Code',
+    labelWarehouse: 'Warehouse',
     labelEmpCode: 'Employee Code',
     colItemCode: 'Item Code',
     colItemName: 'Item Name',

@@ -11,6 +11,8 @@ import { Modal, Form, Input, Table, Button, Spin } from 'antd';
 import { useDataTable } from '@/hooks/useDataTable';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { usePermissions } from '@/hooks/usePermissions';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 
 interface PaymentTerm {
   pt_code: string;
@@ -28,6 +30,8 @@ function PaymentTermPageContent() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const bc = useMemo(() => getBreadcrumbLabels(lang), [lang]);
   const tl = useMemo(() => getAdminPagesTexts(lang).paymentTermList, [lang]);
+  const { can } = usePermissions();
+  const canView = can('view_payment_term');
 
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -307,10 +311,11 @@ function PaymentTermPageContent() {
           ]} 
         />
       }
-      buttonBar={PaymentTermsButtonBar}
+      buttonBar={canView ? PaymentTermsButtonBar : undefined}
       title={tl.title}
       description={tl.description}
     >
+      <RequireViewPermission permission="view_payment_term" lang={lang}>
       {/* Message Section */}
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
@@ -515,6 +520,7 @@ function PaymentTermPageContent() {
           </div>
         </Form>
       </Modal>
+      </RequireViewPermission>
     </BasicPageLayout>
   );
 }

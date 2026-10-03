@@ -7,6 +7,7 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { PlusOutlined, EyeOutlined, DeleteOutlined, ExclamationCircleOutlined, FilterOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Modal, Form, Input, Button, Table, Tooltip, Spin } from 'antd';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getCategoryListTexts } from './i18n';
 import { getBreadcrumbLabels } from '@/lib/i18n/breadcrumbs';
 import { invalidateCategoriesCache } from '@/hooks/useCategories';
@@ -25,6 +26,7 @@ export default function ProductsCategoriesPage() {
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = getCategoryListTexts(lang);
   const bc = getBreadcrumbLabels(lang);
+  const { can, loading: permissionsLoading } = usePermissions();
   const [showFilters, setShowFilters] = useState(false);
 
   const {
@@ -58,6 +60,7 @@ export default function ProductsCategoriesPage() {
         align: 'left' as const,
         render: (_: unknown, record: DbCategory) => (
           <div className="flex flex-row items-center justify-start gap-2">
+            {(can('view_category') || can('edit_category')) && (
             <Tooltip title={t.list.editTitle}>
               <span className="inline-flex">
                 <button
@@ -71,6 +74,8 @@ export default function ProductsCategoriesPage() {
                 </button>
               </span>
             </Tooltip>
+            )}
+            {can('delete_category') && (
             <Tooltip title={t.list.deleteAction}>
               <span className="inline-flex">
                 <button
@@ -84,6 +89,7 @@ export default function ProductsCategoriesPage() {
                 </button>
               </span>
             </Tooltip>
+            )}
           </div>
         )
       },
@@ -142,7 +148,7 @@ export default function ProductsCategoriesPage() {
         },
       }
     ],
-    [t]
+    [t, can]
   );
 
   useEffect(() => {
@@ -240,6 +246,7 @@ export default function ProductsCategoriesPage() {
 
   const CategoryButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
+      {can('create_category') && (
       <Button
         type="primary"
         icon={<PlusOutlined />}
@@ -247,6 +254,7 @@ export default function ProductsCategoriesPage() {
       >
         {t.list.add}
       </Button>
+      )}
       <Button
         icon={<FilterOutlined />}
         type={filters.search ? "primary" : "default"}
@@ -282,10 +290,20 @@ export default function ProductsCategoriesPage() {
           ]}
         />
       }
-      buttonBar={CategoryButtonBar}
+      buttonBar={can('view_category') ? CategoryButtonBar : undefined}
       title={t.list.title}
       description=""
     >
+      {permissionsLoading ? (
+        <div className="px-8 py-16 flex justify-center">
+          <Spin size="large" />
+        </div>
+      ) : !can('view_category') ? (
+        <div className="px-8 py-6 text-gray-600">
+          {lang === 'zh-Hant' ? '您沒有權限檢視此頁面。' : 'You do not have permission to view this page.'}
+        </div>
+      ) : (
+      <>
       {pageMessage.type && pageMessage.text && (
         <div className="px-8 py-4">
           <div className={`p-4 rounded-md border ${
@@ -496,6 +514,8 @@ export default function ProductsCategoriesPage() {
         </div>
         <p className="text-gray-600 mt-2">{t.list.deleteCannotUndo}</p>
       </Modal>
+      </>
+      )}
     </BasicPageLayout>
   );
 }

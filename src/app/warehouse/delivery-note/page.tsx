@@ -12,7 +12,8 @@ import { Form, Input, type InputRef, DatePicker, Select, Button, Table, message,
 import dayjs from 'dayjs';
 import { TransactionGenerator, TransactionSession } from '@/services/transactionGenerator';
 import { PREFIX_REF } from '@/lib/prefixRef';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
+import { isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 
@@ -108,6 +109,7 @@ function DeliveryNotePageContent() {
   const [showSalesOrderModal, setShowSalesOrderModal] = useState(true);
   const [salesOrders, setSalesOrders] = useState<SalesOrderSummary[]>([]);
   const [salesOrdersLoading, setSalesOrdersLoading] = useState(false);
+  const [soContinueLoading, setSoContinueLoading] = useState(false);
   const [selectedSalesOrder, setSelectedSalesOrder] = useState<string | undefined>(undefined);
   const itemSearchInputRef = useRef<InputRef>(null);
   const pendingNavigateRef = useRef<string | null>(null);
@@ -120,7 +122,17 @@ function DeliveryNotePageContent() {
     [selectedSalesOrder]
   );
 
-  const goBackToStock = useBackNavigation(() => router.push('/warehouse/stock'));
+  const goBackToStock = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: isGeneratedTransactionNumber(transactionSession?.transactionCode),
+    fallbackPath: '/warehouse/stock',
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem('delivery_note_session_id');
+    },
+  });
 
   // Initialize browser session ID
   useEffect(() => {
@@ -644,54 +656,6 @@ function DeliveryNotePageContent() {
     }
   }, [showItemModal]);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
-
-  useEffect(() => {
-    const originalPush = router.push.bind(router) as typeof router.push;
-    const originalReplace = router.replace.bind(router) as typeof router.replace;
-
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
-
   return (
     <BasicPageLayout
       breadcrumb={
@@ -1025,14 +989,19 @@ function DeliveryNotePageContent() {
             </Button>,
             <Button
               key="skip"
+              loading={soContinueLoading}
               onClick={async () => {
                 try {
+                  setSoContinueLoading(true);
                   salesOrderShopCodeRef.current = null;
                   setSelectedSalesOrder(undefined);
                   setShowSalesOrderModal(false);
                   await generateDeliveryNoteNumber();
                 } catch {
-                  // error already handled in generator
+                  setShowSalesOrderModal(true);
+                  setIsCreateReady(false);
+                } finally {
+                  setSoContinueLoading(false);
                 }
               }}
             >
@@ -1041,13 +1010,15 @@ function DeliveryNotePageContent() {
             <Button
               key="next"
               type="primary"
-              loading={salesOrdersLoading}
+              loading={salesOrdersLoading || soContinueLoading}
               onClick={async () => {
                 if (!selectedSalesOrder) {
                   message.error(d.selectSORequired);
                   return;
                 }
                 try {
+                  setSoContinueLoading(true);
+                  setShowSalesOrderModal(false);
                   // Load Sales Order details: header (customer, shop, payment) + line items
                   const detailRes = await fetchWithAuth(
                     `/api/transactions/detail/${encodeURIComponent(selectedSalesOrder)}`,
@@ -1144,12 +1115,15 @@ function DeliveryNotePageContent() {
                   }
                   setItems(clonedItems);
 
-                  setShowSalesOrderModal(false);
                   await generateDeliveryNoteNumber();
                 } catch (error) {
                   const msg =
                     error instanceof Error ? error.message : d.failedPrepare;
                   message.error(msg);
+                  setShowSalesOrderModal(true);
+                  setIsCreateReady(false);
+                } finally {
+                  setSoContinueLoading(false);
                 }
               }}
               disabled={salesOrders.length === 0}

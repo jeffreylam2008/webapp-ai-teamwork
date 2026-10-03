@@ -2,7 +2,8 @@
  * Seed script: import categories and items dummy data into the database.
  * Run from project root: node scripts/seed-items-categories.js
  *
- * Requires: src/data/db-config.json, src/data/categories-dummy.json, src/data/items-dummy.json
+ * Requires: .env.local (DB_USER, DB_PASSWORD, DB_NAME), src/data/db-config.json,
+ * data/categories-dummy.json, data/items-dummy.json
  */
 
 const mysql = require('mysql2/promise');
@@ -12,8 +13,8 @@ const { resolveDbConfig } = require('./lib/resolve-db-config');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
-function loadJson(filename) {
-  const filepath = path.join(PROJECT_ROOT, 'src', 'data', filename);
+function loadJson(relPath) {
+  const filepath = path.join(PROJECT_ROOT, relPath);
   const raw = fs.readFileSync(filepath, 'utf8');
   return JSON.parse(raw);
 }
@@ -22,9 +23,9 @@ async function seed() {
   let connection;
 
   try {
-    const dbConfig = resolveDbConfig(loadJson('db-config.json'));
-    const categories = loadJson('categories-dummy.json');
-    const items = loadJson('items-dummy.json');
+    const dbConfig = resolveDbConfig(loadJson(path.join('src', 'data', 'db-config.json')));
+    const categories = loadJson(path.join('data', 'categories-dummy.json'));
+    const items = loadJson(path.join('data', 'items-dummy.json'));
 
     connection = await mysql.createConnection({
       host: dbConfig.host,
@@ -134,13 +135,13 @@ async function seed() {
       try {
         if (defaultShopCode) {
           await connection.execute(
-            'INSERT INTO t_warehouse (item_code, qty, type, shop_code, create_date, modify_date) VALUES (?, 0, ?, ?, NOW(), NOW())',
-            [item_code.trim(), 'in', defaultShopCode]
+            'INSERT INTO t_warehouse (item_code, qty, shop_code, create_date, modify_date) VALUES (?, 0, ?, NOW(), NOW())',
+            [item_code.trim(), defaultShopCode]
           );
         } else {
           await connection.execute(
-            'INSERT INTO t_warehouse (item_code, qty, type, create_date, modify_date) VALUES (?, 0, ?, NOW(), NOW())',
-            [item_code.trim(), 'in']
+            'INSERT INTO t_warehouse (item_code, qty, create_date, modify_date) VALUES (?, 0, NOW(), NOW())',
+            [item_code.trim()]
           );
         }
       } catch (err) {
@@ -164,8 +165,8 @@ async function seed() {
         console.log('\n--- Warehouse backfill ---');
         for (const row of missing) {
           await connection.execute(
-            'INSERT INTO t_warehouse (item_code, qty, type, shop_code, create_date, modify_date) VALUES (?, 0, ?, ?, NOW(), NOW())',
-            [row.item_code, 'in', defaultShopCode]
+            'INSERT INTO t_warehouse (item_code, qty, shop_code, create_date, modify_date) VALUES (?, 0, ?, NOW(), NOW())',
+            [row.item_code, defaultShopCode]
           );
           console.log('  Warehouse row added:', row.item_code);
         }

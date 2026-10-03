@@ -23,7 +23,7 @@ export const zhHant = {
     completeLineItems: '請完成所有貨品資料（貨品、數量、單價）',
     failedFormData: '無法載入表單資料',
     failedCreate: '無法建立採購單',
-    createdSuccess: '已成功建立採購單',
+    createdSuccess: '採購單已建立。倉庫將顯示收貨單提示，請倉務人員收貨。',
     errorSave: '儲存採購單時發生錯誤',
     discardedSuccess: '已成功放棄交易',
     failedDiscard: '無法放棄交易',

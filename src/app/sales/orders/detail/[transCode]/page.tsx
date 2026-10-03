@@ -10,17 +10,23 @@ import {
   ExclamationCircleOutlined,
   FileAddOutlined,
   PrinterOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 import {
   createInvoiceFromSalesOrder,
   getOrCreateInvoiceBrowserSessionId,
 } from '@/lib/createInvoiceFromSalesOrder';
+import { cloneSalesOrder, getOrCreateOrderBrowserSessionId } from '@/lib/cloneSalesOrder';
 import Breadcrumb from '@/components/Breadcrumb';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSalesOrderTexts } from '../../i18n';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import {
+  fetchTransactionDetail,
+  invalidateTransactionDetailCache,
+} from '@/lib/fetchTransactionDetail';
 import { usePermissions } from '@/hooks/usePermissions';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import {
@@ -94,7 +100,7 @@ export default function SalesOrderDetailPage() {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getSalesOrderTexts(lang), [lang]);
-  const { token } = useAuth();
+  const { token, loading: authLoading } = useAuth();
   const { can } = usePermissions();
   const { modal, message: messageApi } = App.useApp();
 
@@ -104,6 +110,7 @@ export default function SalesOrderDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [cloning, setCloning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [header, setHeader] = useState<HeaderRow | null>(null);
   const [details, setDetails] = useState<DetailRow[]>([]);
@@ -115,20 +122,19 @@ export default function SalesOrderDetailPage() {
       setLoading(false);
       return;
     }
+    if (authLoading || !token) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(`/api/transactions/detail/${encodeURIComponent(transCode)}`, token, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      const json = (await res.json()) as ApiResponse;
-      if (!res.ok || !json.success) {
+      const json = await fetchTransactionDetail(transCode, token);
+      if (!json.success) {
         throw new Error(json.error || t?.detailPage?.failedToLoad || 'Failed to load sales order');
       }
-      setHeader(json.header ?? null);
-      setDetails(Array.isArray(json.details) ? json.details : []);
-      setPayments(Array.isArray(json.paymentTotals) ? json.paymentTotals : []);
+      setHeader((json.header as HeaderRow | undefined) ?? null);
+      setDetails(Array.isArray(json.details) ? (json.details as DetailRow[]) : []);
+      setPayments(Array.isArray(json.paymentTotals) ? (json.paymentTotals as PaymentRow[]) : []);
     } catch (e) {
       setHeader(null);
       setDetails([]);
@@ -137,7 +143,7 @@ export default function SalesOrderDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [t, token, transCode]);
+  }, [authLoading, t?.detailPage?.failedToLoad, t?.detailPage?.missingTransCode, token, transCode]);
 
   useEffect(() => {
     void load();
@@ -171,6 +177,7 @@ export default function SalesOrderDetailPage() {
             throw new Error(json.error || t?.prompts?.confirmFailed || 'Failed to confirm sales order');
           }
           messageApi.success(json.message || t?.prompts?.orderConfirmed || 'Sales order confirmed');
+          invalidateTransactionDetailCache(transCode);
           await load();
         } catch (e) {
           messageApi.error(e instanceof Error ? e.message : (t?.prompts?.confirmFailed ?? 'Failed to confirm sales order'));
@@ -207,6 +214,7 @@ export default function SalesOrderDetailPage() {
             throw new Error(json.error || t?.detailPage?.voidFailed || 'Failed to void sales order');
           }
           messageApi.success(json.message || t?.detailPage?.voidSuccess || 'Sales order voided');
+          invalidateTransactionDetailCache(transCode);
           await load();
         } catch (e) {
           messageApi.error(e instanceof Error ? e.message : (t?.detailPage?.voidFailed ?? 'Failed to void sales order'));
@@ -255,6 +263,35 @@ export default function SalesOrderDetailPage() {
     () => !!header && (header.is_convert === 1 || getTransactionDetailStatusKey(header) === 'Converted'),
     [header]
   );
+
+  const handleCloneSalesOrder = useCallback(async () => {
+    if (!transCode) return;
+    const sessionId = getOrCreateOrderBrowserSessionId();
+    if (!sessionId) {
+      messageApi.error(t?.prompts?.errorClone ?? 'Error copying sales order');
+      return;
+    }
+    setCloning(true);
+    messageApi.loading({
+      content: t?.prompts?.cloneStarted ?? 'Copying sales order…',
+      key: 'cloneSalesOrderDetail',
+      duration: 0,
+    });
+    try {
+      const newCode = await cloneSalesOrder({
+        sourceOrderCode: transCode,
+        token,
+        browserSessionId: sessionId,
+      });
+      messageApi.destroy('cloneSalesOrderDetail');
+      router.push(`/sales/orders/create/${encodeURIComponent(newCode)}`);
+    } catch (e) {
+      messageApi.destroy('cloneSalesOrderDetail');
+      messageApi.error(e instanceof Error ? e.message : (t?.prompts?.errorClone ?? 'Error copying sales order'));
+    } finally {
+      setCloning(false);
+    }
+  }, [messageApi, router, t, token, transCode]);
 
   const total = useMemo(() => {
     const headerTotal = n(header?.total);
@@ -308,6 +345,14 @@ export default function SalesOrderDetailPage() {
       </Button>
       <Button onClick={() => void load()} disabled={loading}>
         {t?.detailPage?.refresh ?? 'Refresh'}
+      </Button>
+      <Button
+        icon={<CopyOutlined />}
+        loading={cloning}
+        disabled={loading || confirming || voiding || creatingInvoice || cloning}
+        onClick={() => void handleCloneSalesOrder()}
+      >
+        {t?.detailPage?.cloneOrder ?? 'Copy to new order'}
       </Button>
       {!isConverted && header && header.is_void !== 1 && header.is_settle !== 1 && can('edit_sales_order') && (
         <Button

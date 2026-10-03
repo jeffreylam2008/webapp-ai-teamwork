@@ -17,6 +17,10 @@ import { getQuotationTexts } from '../../i18n';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import {
+  fetchTransactionDetail,
+  invalidateTransactionDetailCache,
+} from '@/lib/fetchTransactionDetail';
 import { formatDisplayDateTime } from '@/lib/datetime';
 import {
   getTransactionDetailStatusKey,
@@ -26,6 +30,10 @@ import {
   TransactionDetailInfoCard,
 } from '@/components/transactionDetailInfo';
 import { formatCurrency } from '@/utils/formatCurrency';
+import {
+  isPrintPopupBlocked,
+  openTransactionPrintWindow,
+} from '@/lib/openTransactionPrintWindow';
 
 const { Text } = Typography;
 
@@ -87,7 +95,7 @@ export default function QuotationDetailPage() {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getQuotationTexts(lang), [lang]);
-  const { token } = useAuth();
+  const { token, loading: authLoading } = useAuth();
   const { can } = usePermissions();
   const { modal, message: messageApi } = App.useApp();
 
@@ -107,20 +115,19 @@ export default function QuotationDetailPage() {
       setLoading(false);
       return;
     }
+    if (authLoading || !token) {
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchWithAuth(`/api/transactions/detail/${encodeURIComponent(transCode)}`, token, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
-      });
-      const json = (await res.json()) as ApiResponse;
-      if (!res.ok || !json.success) {
+      const json = await fetchTransactionDetail(transCode, token);
+      if (!json.success) {
         throw new Error(json.error || t?.detailPage?.failedToLoad || 'Failed to load quotation');
       }
-      setHeader(json.header ?? null);
-      setDetails(Array.isArray(json.details) ? json.details : []);
-      setPayments(Array.isArray(json.paymentTotals) ? json.paymentTotals : []);
+      setHeader((json.header as HeaderRow | undefined) ?? null);
+      setDetails(Array.isArray(json.details) ? (json.details as DetailRow[]) : []);
+      setPayments(Array.isArray(json.paymentTotals) ? (json.paymentTotals as PaymentRow[]) : []);
     } catch (e) {
       setHeader(null);
       setDetails([]);
@@ -129,7 +136,7 @@ export default function QuotationDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [t, token, transCode]);
+  }, [authLoading, t?.detailPage?.failedToLoad, t?.detailPage?.missingTransCode, token, transCode]);
 
   useEffect(() => {
     void load();
@@ -188,6 +195,7 @@ export default function QuotationDetailPage() {
           }
           const orderCode = json.orderCode || json.invoiceCode || '';
           messageApi.success(t?.prompts?.convertSuccess ? t.prompts.convertSuccess(orderCode) : `Converted successfully: ${orderCode}`);
+          invalidateTransactionDetailCache(transCode);
           await load();
           router.push(`/sales/orders/detail/${encodeURIComponent(orderCode)}`);
         } catch (err) {
@@ -263,7 +271,13 @@ export default function QuotationDetailPage() {
         icon={<PrinterOutlined />}
         onClick={() => {
           if (!transCode) return;
-          window.open(`/sales/quotations/print/${encodeURIComponent(transCode)}`, '_blank', 'width=820,height=900,scrollbars=yes');
+          const popup = openTransactionPrintWindow(
+            `/sales/quotations/print/${encodeURIComponent(transCode)}`,
+            { lang }
+          );
+          if (isPrintPopupBlocked(popup)) {
+            messageApi.warning('Please allow pop-ups to open the print preview.');
+          }
         }}
       >
         {t?.detailPage?.print ?? 'Print'}

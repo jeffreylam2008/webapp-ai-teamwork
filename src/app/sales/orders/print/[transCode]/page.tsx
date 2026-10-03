@@ -1,13 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { TransactionPrintPageContent } from '@/print-templates';
 import { PRINT_TEMPLATE_IDS } from '@/print-templates/printTemplateRegistry';
 import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSalesOrderTexts } from '../../i18n';
 
-export default function SalesOrderPrintPage() {
+function SalesOrderPrintContent() {
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getSalesOrderTexts(lang), [lang]);
@@ -21,8 +21,20 @@ export default function SalesOrderPrintPage() {
       missingCodeText={t.print.missingCode}
       documentNotFoundText={t.print.notFound}
       loadFailedText={t.print.loadFailed}
-      printButtonText={t.print.print}
-      closeButtonText={t.print.close}
     />
+  );
+}
+
+export default function SalesOrderPrintPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center text-gray-600">
+          Loading…
+        </div>
+      }
+    >
+      <SalesOrderPrintContent />
+    </Suspense>
   );
 }

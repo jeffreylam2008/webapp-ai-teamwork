@@ -9,6 +9,8 @@ import BasicPageLayout from '@/components/BasicPageLayout';
 import { EyeOutlined, DeleteOutlined, ExclamationCircleOutlined, PlusOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
 import { App, Modal, Form, Input, Table, Button, Spin, Switch, Select } from 'antd';
 import { useDataTable } from '@/hooks/useDataTable';
+import { usePermissions } from '@/hooks/usePermissions';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 
 interface Shop {
   uid: number;
@@ -32,6 +34,8 @@ function ShopsPageContent() {
   const bc = useMemo(() => getBreadcrumbLabels(lang), [lang]);
   const sl = useMemo(() => getAdminPagesTexts(lang).shopsList, [lang]);
   const { message } = App.useApp();
+  const { can } = usePermissions();
+  const canView = can('view_shop');
 
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -326,10 +330,11 @@ function ShopsPageContent() {
           ]} 
         />
       }
-      buttonBar={ShopsButtonBar}
+      buttonBar={canView ? ShopsButtonBar : undefined}
       title={sl.title}
       description={sl.description}
     >
+      <RequireViewPermission permission="view_shop" lang={lang}>
       {/* Main Content Block */}
       <div className="px-8 py-6 bg-white">
         {/* Filter Section */}
@@ -536,6 +541,7 @@ function ShopsPageContent() {
           </div>
         </Form>
       </Modal>
+      </RequireViewPermission>
     </BasicPageLayout>
   );
 }

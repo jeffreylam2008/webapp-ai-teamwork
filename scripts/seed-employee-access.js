@@ -1,9 +1,9 @@
 /**
- * Seed t_employee_access_default and t_employee_access.
+ * Seed t_employee_role, t_employee_access_default, and t_employee_access.
  *
- * - t_employee_access_default: role_code (references t_employee_role), function, a_create, a_edit, a_delete, a_view.
- *   One row per (role_code, function) with all 1s. Role codes from t_employee_role or DISTINCT from t_employee.
- * - t_employee_access: from t_employee (employee_code, default_shopcode, role_code); permission values from role.
+ * - t_employee_role: Administrator, Sales Manager, Warehouse Manager
+ * - t_employee_access_default: per-role function templates
+ * - t_employee_access: actual permissions per employee (from role template)
  *
  * Run from project root: node scripts/seed-employee-access.js
  */
@@ -11,26 +11,11 @@
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
-
-// Same function ids as FUNCTION_PERMISSION_ROWS in src/config/transactionPermissions.ts
-const PERMISSION_FUNCTIONS = [
-  'po',
-  'invoice',
-  'sales_order',
-  'quotation',
-  'grn',
-  'stocktake',
-  'delivery_note',
-  'adjustment',
-];
-
-/** Return a_create, a_edit, a_delete, a_view from role_code. role_code 1 = Supervisor = full; others = view only. */
-function getAccessByRole(roleCode) {
-  const r = roleCode != null ? Number(roleCode) : 0;
-  if (r === 1) return { a_create: 1, a_edit: 1, a_delete: 1, a_view: 1 };
-  return { a_create: 0, a_edit: 0, a_delete: 0, a_view: 1 };
-}
-
+const {
+  PERMISSION_FUNCTIONS,
+  EMPLOYEE_ROLES,
+  getAccessFlagsForRoleAndFunction,
+} = require('./lib/role-permission-defaults');
 const { resolveDbConfig } = require('./lib/resolve-db-config');
 
 function loadDbConfig() {
@@ -62,7 +47,36 @@ async function run() {
     connection = await mysql.createConnection(dbConfig);
     console.log('Connected to database:', dbConfig.database);
 
-    // Ensure t_employee_access exists
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS t_employee_role (
+        role_code INT NOT NULL,
+        role_key VARCHAR(32) NOT NULL,
+        role_name VARCHAR(64) NOT NULL,
+        description VARCHAR(255) NULL,
+        status TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        create_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+        modify_date DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (role_code),
+        UNIQUE KEY uk_employee_role_key (role_key)
+      )
+    `);
+    console.log('Table t_employee_role ensured.');
+
+    for (const role of EMPLOYEE_ROLES) {
+      await connection.query(
+        `INSERT INTO t_employee_role (role_code, role_key, role_name, description, status, sort_order)
+         VALUES (?, ?, ?, ?, 1, ?)
+         ON DUPLICATE KEY UPDATE
+           role_key = VALUES(role_key),
+           role_name = VALUES(role_name),
+           description = VALUES(description),
+           sort_order = VALUES(sort_order)`,
+        [role.role_code, role.role_key, role.role_name, role.description, role.sort_order]
+      );
+    }
+    console.log('Seeded t_employee_role:', EMPLOYEE_ROLES.map((r) => r.role_name).join(', '));
+
     await connection.query(`
       CREATE TABLE IF NOT EXISTS t_employee_access (
         uid INT NOT NULL,
@@ -81,7 +95,6 @@ async function run() {
     `);
     console.log('Table t_employee_access ensured.');
 
-    // Migrate t_employee_access_default: if it has old schema (employee_code), drop it for recreate with role_code
     try {
       const [colRows] = await connection.execute(
         `SELECT COLUMN_NAME FROM information_schema.COLUMNS 
@@ -96,7 +109,6 @@ async function run() {
       // Table may not exist
     }
 
-    // t_employee_access_default: role_code (references t_employee_role), function, a_create, a_edit, a_delete, a_view. No employee_code.
     await connection.query(`
       CREATE TABLE IF NOT EXISTS t_employee_access_default (
         role_code INT NOT NULL,
@@ -112,42 +124,40 @@ async function run() {
     `);
     console.log('Table t_employee_access_default ensured (role_code + function).');
 
-    // Get role_codes from t_employee_role if it exists, else from DISTINCT role_code in t_employee
-    let roleCodes = [];
-    try {
-      const [roleRows] = await connection.execute('SELECT role_code FROM t_employee_role ORDER BY role_code');
-      if (roleRows && roleRows.length > 0) {
-        roleCodes = roleRows.map((r) => r.role_code);
-        console.log('Using role_codes from t_employee_role:', roleCodes);
-      }
-    } catch {
-      // t_employee_role may not exist
-    }
+    const [roleRows] = await connection.execute('SELECT role_code FROM t_employee_role ORDER BY role_code');
+    let roleCodes = (roleRows || []).map((r) => r.role_code);
     if (roleCodes.length === 0) {
-      const [distinctRows] = await connection.execute('SELECT DISTINCT role_code FROM t_employee WHERE role_code IS NOT NULL ORDER BY role_code');
-      roleCodes = distinctRows.map((r) => r.role_code);
-      if (roleCodes.length === 0) roleCodes = [1];
-      console.log('Using role_codes from t_employee:', roleCodes);
+      roleCodes = EMPLOYEE_ROLES.map((r) => r.role_code);
     }
+    console.log('Using role_codes:', roleCodes);
 
-    // Seed t_employee_access_default: one row per (role_code, function) with create, edit, delete, view = 1
     let defaultInserted = 0;
     let defaultUpdated = 0;
     for (const roleCode of roleCodes) {
       for (const fn of PERMISSION_FUNCTIONS) {
+        const { a_create, a_edit, a_delete, a_view } = getAccessFlagsForRoleAndFunction(roleCode, fn);
         const [dr] = await connection.query(
           `INSERT INTO t_employee_access_default (role_code, \`function\`, a_create, a_edit, a_delete, a_view)
-           VALUES (?, ?, 1, 1, 1, 1)
-           ON DUPLICATE KEY UPDATE a_create = 1, a_edit = 1, a_delete = 1, a_view = 1`,
-          [roleCode, fn]
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE
+             a_create = VALUES(a_create),
+             a_edit = VALUES(a_edit),
+             a_delete = VALUES(a_delete),
+             a_view = VALUES(a_view)`,
+          [roleCode, fn, a_create, a_edit, a_delete, a_view]
         );
         if (dr.affectedRows === 1) defaultInserted++;
         else if (dr.affectedRows === 2) defaultUpdated++;
       }
     }
-    console.log('Seeded t_employee_access_default:', defaultInserted, 'new,', defaultUpdated, 'updated (role_code + all functions create/edit/delete/view).');
+    console.log(
+      'Seeded t_employee_access_default:',
+      defaultInserted,
+      'new,',
+      defaultUpdated,
+      'updated (role-based templates).'
+    );
 
-    // Get all employees for t_employee_access
     const [employees] = await connection.execute(
       'SELECT uid, employee_code, default_shopcode, role_code FROM t_employee ORDER BY uid'
     );
@@ -162,15 +172,22 @@ async function run() {
 
     for (const emp of employees) {
       const employeeCode = String(emp.employee_code);
-      const shopCode = (emp.default_shopcode != null && emp.default_shopcode !== '') ? String(emp.default_shopcode) : 'HQ01';
-      const access = getAccessByRole(emp.role_code);
-      const { a_create, a_edit, a_delete, a_view } = access;
+      const shopCode =
+        emp.default_shopcode != null && emp.default_shopcode !== ''
+          ? String(emp.default_shopcode)
+          : 'HQ01';
+      const roleCode = emp.role_code != null ? Number(emp.role_code) : 1;
 
       for (const fn of PERMISSION_FUNCTIONS) {
+        const { a_create, a_edit, a_delete, a_view } = getAccessFlagsForRoleAndFunction(roleCode, fn);
         const [ar] = await connection.query(
           `INSERT INTO t_employee_access (employee_code, shop_code, \`function\`, sub_function, a_create, a_edit, a_delete, a_view)
            VALUES (?, ?, ?, '', ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE a_create = VALUES(a_create), a_edit = VALUES(a_edit), a_delete = VALUES(a_delete), a_view = VALUES(a_view)`,
+           ON DUPLICATE KEY UPDATE
+             a_create = VALUES(a_create),
+             a_edit = VALUES(a_edit),
+             a_delete = VALUES(a_delete),
+             a_view = VALUES(a_view)`,
           [employeeCode, shopCode, fn, a_create, a_edit, a_delete, a_view]
         );
         if (ar.affectedRows === 1) accessInserted++;
@@ -178,7 +195,13 @@ async function run() {
       }
     }
 
-    console.log('Seeded t_employee_access:', accessInserted, 'new,', accessUpdated, 'updated (from t_employee employee_code, default_shopcode, role_code).');
+    console.log(
+      'Seeded t_employee_access:',
+      accessInserted,
+      'new,',
+      accessUpdated,
+      'updated (from employee role templates).'
+    );
     console.log('Done.');
   } catch (err) {
     console.error('Error:', err.message);

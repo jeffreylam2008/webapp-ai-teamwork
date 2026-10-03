@@ -21,7 +21,7 @@ interface BasicPageLayoutProps {
   breadcrumb?: React.ReactNode;
   buttonBar?: React.ReactNode;
   title?: string;
-  description?: string;
+  description?: React.ReactNode;
   message?: React.ReactNode;
   children: React.ReactNode;
   actionBarSaveShortcut?: ActionBarSaveShortcutConfig;
@@ -68,24 +68,34 @@ const BasicPageLayout: React.FC<BasicPageLayoutProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [shortcutActive]);
 
+  const hasStickyChrome = Boolean(breadcrumb || buttonBar || title || description);
+
   return (
-    <div className="w-full">
-      {breadcrumb ? (
-        <div className="px-4 py-3 bg-white border-b border-gray-200">
-          {breadcrumb}
+    <div className="basic-page-layout w-full min-w-0">
+      {hasStickyChrome ? (
+        <div className="basic-page-layout__sticky">
+          {breadcrumb ? (
+            <div className="basic-page-layout__breadcrumb px-4 py-3 bg-white border-b border-gray-200">
+              {breadcrumb}
+            </div>
+          ) : null}
+
+          {buttonBar ? (
+            <div className="basic-page-layout__button-bar">
+              {buttonBar}
+            </div>
+          ) : null}
+
+          {(title || description) && (
+            <div className="basic-page-layout__title px-4 py-1 bg-gray-50 border-b border-gray-200">
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                {title && <Title level={2} style={{ margin: 0 }}>{title}</Title>}
+                {description && <Paragraph style={{ margin: 0, color: '#333' }}>{description}</Paragraph>}
+              </Space>
+            </div>
+          )}
         </div>
       ) : null}
-
-      {buttonBar}
-
-      {(title || description) && (
-        <div className="px-4 py-1 bg-gray-50 border-b border-gray-200">
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            {title && <Title level={2} style={{ margin: 0 }}>{title}</Title>}
-            {description && <Paragraph style={{ margin: 0, color: '#333' }}>{description}</Paragraph>}
-          </Space>
-        </div>
-      )}
 
       {message}
 

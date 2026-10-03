@@ -58,6 +58,9 @@ Internal ERP-style web application: **Next.js (App Router)** front end with **My
 | `npm run start` | Start production server (`next start`; set `PORT` if needed) |
 | `npm run lint` | ESLint |
 | `npm run seed:items` | Seed script for items/categories (see `scripts/`) |
+| `npm run generate:transactions` | Generate random SO/INV rows in the database |
+| `npm run test:quotations` | Create test quotations via API; pass `--port` or `--base-url` (see `docs/TEST_TRANSACTION.md`) |
+| `npm run test:purchases` | Create test purchase orders via API; pass `--port` or `--base-url` (see `docs/TEST_TRANSACTION.md`) |
 
 ## Project layout (high level)
 
@@ -66,7 +69,8 @@ Internal ERP-style web application: **Next.js (App Router)** front end with **My
 - `src/contexts/` — React context (e.g. auth)
 - `src/hooks/` — Shared hooks (permissions, pagination, language, navigation)
 - `src/lib/` — DB access, auth helpers, i18n, logging
-- `src/data/` — Static data such as menu JSON and `db-config.json`
+- `src/data/` — App-required config (`base-menu.json`, `db-config.json`)
+- `data/` — Optional seed/dummy JSON used by scripts only (not loaded by the app)
 - `scripts/` — Node scripts for seeding and maintenance
 
 ## Internationalization

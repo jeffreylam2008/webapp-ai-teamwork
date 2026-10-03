@@ -19,6 +19,7 @@ import {
   canViewWarehouseTransactionType,
 } from '@/config/transactionPermissions';
 import { PREFIX_REF, effectivePrefixRef } from '@/lib/prefixRef';
+import CurrentWarehouseBanner from '@/components/CurrentWarehouseBanner';
 
 interface StockTransaction {
   uid: number;
@@ -72,6 +73,7 @@ function StockPageContent() {
   const [voidingTransCode, setVoidingTransCode] = useState<string | null>(null);
   const [prefixFilter, setPrefixFilter] = useState<string>('');
   const [pendingSoForDnCount, setPendingSoForDnCount] = useState(0);
+  const [pendingPoForGrnCount, setPendingPoForGrnCount] = useState(0);
 
   const fetchPendingSoForDnCount = useCallback(async () => {
     if (!token) {
@@ -87,6 +89,26 @@ function StockPageContent() {
       const result = await response.json();
       if (response.ok && result.success) {
         setPendingSoForDnCount(Number(result.pending_count ?? 0) || 0);
+      }
+    } catch {
+      // Non-blocking: badge is optional UI hint
+    }
+  }, [token]);
+
+  const fetchPendingPoForGrnCount = useCallback(async () => {
+    if (!token) {
+      setPendingPoForGrnCount(0);
+      return;
+    }
+    try {
+      const response = await fetchWithAuth(
+        `/api/grn/purchase-orders?countOnly=1&_=${Date.now()}`,
+        token,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      );
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setPendingPoForGrnCount(Number(result.pending_count ?? 0) || 0);
       }
     } catch {
       // Non-blocking: badge is optional UI hint
@@ -404,25 +426,38 @@ function StockPageContent() {
 
   useEffect(() => {
     void fetchPendingSoForDnCount();
-  }, [fetchPendingSoForDnCount]);
+    void fetchPendingPoForGrnCount();
+  }, [fetchPendingSoForDnCount, fetchPendingPoForGrnCount]);
 
   useEffect(() => {
-    const onFocus = () => void fetchPendingSoForDnCount();
+    const onFocus = () => {
+      void fetchPendingSoForDnCount();
+      void fetchPendingPoForGrnCount();
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [fetchPendingSoForDnCount]);
+  }, [fetchPendingSoForDnCount, fetchPendingPoForGrnCount]);
 
   const handleRefresh = () => {
     void fetchTransactions();
     void fetchPendingSoForDnCount();
+    void fetchPendingPoForGrnCount();
   };
 
   const StockButtonBar = (
     <div className="px-8 py-3 bg-white border-b border-gray-200 mb-4 flex gap-2">
       {canCreateWarehouseAction(can, 'grn') && (
-        <Button icon={<PlusOutlined />} type="primary" onClick={() => router.push('/warehouse/stock/grn')}>
-          {t.list.btnGrn}
-        </Button>
+        <Tooltip
+          title={
+            pendingPoForGrnCount > 0 ? t.list.grnBadgeTooltip(pendingPoForGrnCount) : undefined
+          }
+        >
+          <Badge count={pendingPoForGrnCount} size="small" overflowCount={99} offset={[-4, 4]}>
+            <Button icon={<PlusOutlined />} type="primary" onClick={() => router.push('/warehouse/stock/grn')}>
+              {t.list.btnGrn}
+            </Button>
+          </Badge>
+        </Tooltip>
       )}
       {canCreateWarehouseAction(can, 'delivery_note') && (
         <Tooltip
@@ -475,7 +510,13 @@ function StockPageContent() {
         }
         buttonBar={StockButtonBar}
         title={t.list.title}
-        description={t.list.description}
+        description={
+          <CurrentWarehouseBanner
+            title={t.list.operatingWarehouse}
+            forShop={t.list.operatingWarehouseForShop}
+            notAssigned={t.list.warehouseNotAssigned}
+          />
+        }
       >
         {pageMessage.type && pageMessage.text && (
           <div className="px-8 py-4">

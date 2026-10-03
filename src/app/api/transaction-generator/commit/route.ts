@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
-import { generatorSeqQuoted, getTransNumGeneratorSchema } from '@/lib/transNumGeneratorSchema';
+import { getTransNumGeneratorSchema } from '@/lib/transNumGeneratorSchema';
 import { parseGeneratedTransactionCode } from '@/utils/transactionUtils';
+import { generatorLookupParams } from '@/middleware/transactionGenerator';
 
 export async function POST(request: NextRequest) {
   try {
@@ -47,13 +48,11 @@ export async function POST(request: NextRequest) {
     if (transactionCode) {
       const parts = parseGeneratedTransactionCode(transactionCode);
       const sch = await getTransNumGeneratorSchema();
-      const seqQ = generatorSeqQuoted(sch);
-      if (parts && seqQ && sch.hasStatus) {
+      if (parts && sch.hasStatus) {
+        const lookup = await generatorLookupParams(parts.prefix, parts.suffix, parts.lastNumber);
         const byParts = await dbService.query(
-          `UPDATE t_trans_num_generator
-           SET status = "committed"
-           WHERE prefix = ? AND suffix = ? AND ${seqQ} = ?`,
-          [parts.prefix, parts.suffix, parts.lastNumber]
+          `UPDATE t_trans_num_generator SET status = "committed" WHERE ${lookup.whereSql}`,
+          lookup.params
         );
         const n = byParts.affectedRows ?? 0;
         if (n > 0) {

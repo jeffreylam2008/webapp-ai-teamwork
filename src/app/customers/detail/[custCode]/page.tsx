@@ -586,9 +586,12 @@ export default function CustomerDetailPage() {
                       value={editCustomer.district_code}
                       onChange={value => handleFieldChange('district_code', value)}
                       style={{ width: '100%' }}
-                      options={districts}
+                      options={districtOptions}
                       loading={districtsLoading}
                       placeholder={t.detail.placeholders.selectDistrict}
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
                     />
                   </Descriptions.Item>
                   <Descriptions.Item label={t.detail.labels.deliveryAddress}>

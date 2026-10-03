@@ -622,6 +622,7 @@ export default function SalesReportPage() {
         value={dateRange}
         onChange={(dates) => setDateRange(dates as [Dayjs | null, Dayjs | null])}
         allowClear={false}
+        className="w-full sm:w-auto"
       />
       <Select
         value={shopCode || undefined}

@@ -27,6 +27,7 @@ export const zhHant = {
     paginationSaveFailed: '分頁設定儲存失敗',
     languageSaveFailed: '語言儲存失敗',
     timezoneSaveFailed: '時區儲存失敗',
+    shopLogoSaveFailed: '商店標誌儲存失敗',
   },
   sections: {
     systemName: {
@@ -41,8 +42,17 @@ export const zhHant = {
     },
     shopLogo: {
       title: '商店標誌',
-      hint: '登入後側欄顯示。圖示名稱或圖片 URL；留空則使用「標誌」。',
-      placeholder: '例如：ShopOutlined 或 /logo-300x300.png',
+      hint: '套用至登入時選擇的店舖，以二進位儲存於該店舖（t_shop.logo_pic）。僅限 JPG／PNG，上限 5 MB（會如貨品圖片一樣自動壓縮）。登入後側欄顯示；若空白則使用「標誌」。',
+      forShop: (shop: string) => `套用店舖：${shop}`,
+      noShop: '尚未選擇店舖。請以店舖登入後再管理標誌。',
+      upload: '上傳標誌',
+      remove: '移除',
+      imageFileTypesHint: '僅限 JPG、JPEG 或 PNG。',
+      invalidImageType: '請選擇 JPG、JPEG 或 PNG 圖片。',
+      imageTooLarge: '圖片過大（上限 5 MB），請選擇較小的檔案。',
+      imageCompressFailed: '無法處理圖片，請改用其他檔案。',
+      uploadFailed: '無法儲存商店標誌',
+      clearFailed: '無法清除商店標誌',
     },
     language: {
       title: '系統語言',
@@ -55,8 +65,8 @@ export const zhHant = {
     },
     timezone: {
       title: '時區',
-      hint: '交易建立／修改時間及列表顯示所用的當地時間。',
-      rolloutHint: '預設：Asia/Hong_Kong。變更後會影響全系統日期時間顯示與寫入。',
+      hint: '交易建立／修改時間、日誌及列表顯示所用的當地時間。',
+      rolloutHint: '預設：Asia/Hong_Kong。變更後會影響日誌檔、全系統日期時間顯示與寫入。',
     },
     idle: {
       title: '閒置登出（分鐘）',

@@ -8,6 +8,13 @@ export function isTransactionDraftTransCode(code: string | undefined | null): bo
   return String(code || '').trim().toLowerCase() === TRANSACTION_DRAFT_TRANS_CODE;
 }
 
+/** True only after a real document number has been reserved or loaded. */
+export function isGeneratedTransactionNumber(code: string | null | undefined): boolean {
+  const value = String(code || '').trim();
+  if (!value) return false;
+  return !isTransactionDraftTransCode(value);
+}
+
 export function ensureBrowserSessionId(sessionKey: string): string {
   if (typeof window === 'undefined') return '';
   let sessionId = sessionStorage.getItem(sessionKey) || '';

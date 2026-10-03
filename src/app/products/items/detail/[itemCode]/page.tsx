@@ -73,7 +73,7 @@ interface Warehouse {
   uid: number;
   item_code: string;
   stock_on_hand: number; // This maps to qty from database
-  type: string;
+  shop_code?: string;
   create_date?: string;
   modify_date?: string;
 }
@@ -356,15 +356,11 @@ export default function ItemDetailPage() {
         render: (qty: number) => <Text strong>{Number(qty || 0).toFixed(2)}</Text>,
       },
       {
-        title: t.detail.warehouseColumns.type,
-        dataIndex: 'type',
-        key: 'type',
+        title: t.detail.warehouseColumns.shop,
+        dataIndex: 'shop_code',
+        key: 'shop_code',
         width: 120,
-        render: (type: string) => {
-          const ty = String(type || '').toLowerCase();
-          const color = ty === 'in' ? 'green' : ty === 'out' ? 'red' : ty === 'hold' ? 'orange' : 'default';
-          return <Tag color={color}>{type || '-'}</Tag>;
-        },
+        render: (shop: string) => shop || '-',
       },
       {
         title: t.detail.warehouseColumns.updated,

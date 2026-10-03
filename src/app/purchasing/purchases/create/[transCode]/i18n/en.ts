@@ -24,7 +24,7 @@ export const en = {
     completeLineItems: 'Please complete all line items (item, quantity, price)',
     failedFormData: 'Failed to load form data',
     failedCreate: 'Failed to create purchase order',
-    createdSuccess: 'Purchase order created successfully',
+    createdSuccess: 'Purchase order created. Warehouse will be prompted to receive goods (GRN).',
     errorSave: 'Error saving purchase order',
     discardedSuccess: 'Transaction discarded',
     failedDiscard: 'Failed to discard transaction',

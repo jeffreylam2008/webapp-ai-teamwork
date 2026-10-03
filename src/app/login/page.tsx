@@ -177,6 +177,7 @@ function LoginPageContent() {
                 prefix={<UserOutlined className="text-gray-400" />}
                 placeholder={lt.usernamePlaceholder}
                 autoComplete="username"
+                autoFocus
                 disabled={loading}
               />
             </Form.Item>

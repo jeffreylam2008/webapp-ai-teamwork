@@ -1,8 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Button, Card, Form, Input, InputNumber, Select, message, Spin, Typography } from 'antd';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Upload,
+  message,
+  Spin,
+  Typography,
+} from 'antd';
+import { PictureOutlined } from '@ant-design/icons';
 import BasicPageLayout from '@/components/BasicPageLayout';
 import Breadcrumb from '@/components/Breadcrumb';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,12 +22,29 @@ import { useSystemLanguage } from '@/hooks/useSystemLanguage';
 import { getSystemSettingsTexts } from './i18n';
 import { saveWithShortcutLabel } from '@/lib/i18n/saveShortcutLabel';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
+import { RequireViewPermission } from '@/components/RequireViewPermission';
 import { DEFAULT_TIMEZONE, SYSTEM_TIMEZONE_OPTIONS } from '@/lib/systemTimezone';
+import { prepareItemImageFileForUpload } from '@/lib/itemImageUpload';
+import { clearSystemBrandingCache } from '@/lib/systemBranding';
+import { shopLogoBase64ToDataUrl } from '@/lib/itemImageDisplay';
 
 const { Text } = Typography;
 
+const LOGO_ACCEPT = 'image/jpeg,image/png,.jpg,.jpeg,.png';
+
+function isAllowedLogoFile(file: File): boolean {
+  const mime = (file.type || '').toLowerCase();
+  if (mime === 'image/jpeg' || mime === 'image/png') return true;
+  const name = (file.name || '').toLowerCase();
+  return name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png');
+}
+
+function beforeUploadLogo(): boolean {
+  return false;
+}
+
 export default function SystemSettingsPage() {
-  const { token, loading: authLoading } = useAuth();
+  const { token, user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const lang = useSystemLanguage(searchParams.get('lang'));
   const t = useMemo(() => getSystemSettingsTexts(lang), [lang]);
@@ -23,6 +52,45 @@ export default function SystemSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [messageApi, messageContextHolder] = message.useMessage();
+  const [shopLogoBase64, setShopLogoBase64] = useState<string | null>(null);
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
+  const [previewLogo, setPreviewLogo] = useState<string | null>(null);
+  const [clearShopLogo, setClearShopLogo] = useState(false);
+
+  const shopCode = String(user?.selected_shopcode || user?.default_shopcode || '').trim();
+  const shopLabel = user?.selected_shopname
+    ? `${shopCode} – ${user.selected_shopname}`
+    : shopCode;
+
+  const loadShopLogo = useCallback(async () => {
+    if (!token || !shopCode) {
+      setShopLogoBase64(null);
+      setPreviewLogo(null);
+      setPendingLogoFile(null);
+      setClearShopLogo(false);
+      return;
+    }
+    try {
+      const res = await fetchWithAuth(
+        `/api/shops/${encodeURIComponent(shopCode)}/logo`,
+        token,
+        { cache: 'no-store' }
+      );
+      const result = await res.json();
+      if (result?.success) {
+        const body = typeof result.data?.logo_pic === 'string' ? result.data.logo_pic : null;
+        setShopLogoBase64(body);
+      } else {
+        setShopLogoBase64(null);
+      }
+    } catch {
+      setShopLogoBase64(null);
+    } finally {
+      setPendingLogoFile(null);
+      setPreviewLogo(null);
+      setClearShopLogo(false);
+    }
+  }, [token, shopCode]);
 
   const loadSettings = async () => {
     if (!token) {
@@ -52,7 +120,6 @@ export default function SystemSettingsPage() {
         form.setFieldsValue({
           system_name: nameResult.data.system_name ?? '',
           logo: nameResult.data.logo ?? '',
-          shop_logo: nameResult.data.shop_logo ?? '',
         });
       }
       if (idleResult?.success) {
@@ -73,6 +140,8 @@ export default function SystemSettingsPage() {
       if (tzResult?.success) {
         form.setFieldsValue({ timezone: tzResult.data?.timezone ?? DEFAULT_TIMEZONE });
       }
+
+      await loadShopLogo();
 
       if (!idleResult?.success || !qtaResult?.success || !pgResult?.success) {
         messageApi.error(
@@ -95,7 +164,47 @@ export default function SystemSettingsPage() {
     }
     void loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, authLoading]);
+  }, [token, authLoading, shopCode]);
+
+  const handleLogoChange = async (info: { file?: { originFileObj?: File } | File }) => {
+    let file: File | undefined;
+    if (info.file && typeof info.file === 'object' && 'originFileObj' in info.file) {
+      file = info.file.originFileObj;
+    } else if (info.file instanceof File) {
+      file = info.file;
+    }
+    if (!file) return;
+    if (!isAllowedLogoFile(file)) {
+      messageApi.error(t.sections.shopLogo.invalidImageType);
+      return;
+    }
+    try {
+      const prepared = await prepareItemImageFileForUpload(file);
+      setPendingLogoFile(prepared);
+      setClearShopLogo(false);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64 = (e.target?.result as string)?.split(',')[1];
+        setPreviewLogo(base64 ?? null);
+      };
+      reader.readAsDataURL(prepared);
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === 'FILE_TOO_LARGE') {
+        messageApi.error(t.sections.shopLogo.imageTooLarge);
+      } else {
+        messageApi.error(t.sections.shopLogo.imageCompressFailed);
+      }
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setPendingLogoFile(null);
+    setPreviewLogo(null);
+    if (shopLogoBase64) {
+      setClearShopLogo(true);
+    }
+  };
 
   const onResetDefault = async () => {
     if (!token) return;
@@ -107,7 +216,6 @@ export default function SystemSettingsPage() {
         form.setFieldsValue({
           system_name: d.system_name ?? 'ERP System',
           logo: d.logo ?? '',
-          shop_logo: d.shop_logo ?? '',
           idle: d.idle ?? 10,
           quotation_valid_days: d.quotation_valid_days ?? 30,
           page_size_default: d.page_size_default ?? 100,
@@ -115,6 +223,9 @@ export default function SystemSettingsPage() {
           language: d.language === 'zh-Hant' ? 'zh-Hant' : 'en',
           timezone: d.timezone ?? DEFAULT_TIMEZONE,
         });
+        setPendingLogoFile(null);
+        setPreviewLogo(null);
+        setClearShopLogo(false);
         messageApi.success(t.messages.loadDefaultsSuccess);
       } else {
         messageApi.error(result?.error || t.messages.loadDefaultsFailed);
@@ -128,7 +239,6 @@ export default function SystemSettingsPage() {
   const onSave = async (values: {
     system_name?: string;
     logo?: string;
-    shop_logo?: string;
     idle: number;
     quotation_valid_days: number;
     page_size_default: number;
@@ -146,7 +256,6 @@ export default function SystemSettingsPage() {
           body: JSON.stringify({
             system_name: values.system_name ?? '',
             logo: values.logo ?? '',
-            shop_logo: values.shop_logo ?? '',
           }),
         }),
         fetchWithAuth('/api/system/idle', token, {
@@ -201,12 +310,56 @@ export default function SystemSettingsPage() {
       if (!langResult?.success) errors.push(langResult?.error || t.errors.languageSaveFailed);
       if (!tzResult?.success) errors.push(tzResult?.error || t.errors.timezoneSaveFailed);
 
+      if (shopCode && (pendingLogoFile || clearShopLogo)) {
+        try {
+          if (pendingLogoFile) {
+            const formData = new FormData();
+            formData.append('logo', pendingLogoFile);
+            const logoRes = await fetchWithAuth(
+              `/api/shops/${encodeURIComponent(shopCode)}/logo`,
+              token,
+              { method: 'PUT', body: formData }
+            );
+            const logoResult = await logoRes.json();
+            if (!logoResult?.success) {
+              errors.push(logoResult?.error || t.errors.shopLogoSaveFailed);
+            } else {
+              setShopLogoBase64(
+                typeof logoResult.data?.logo_pic === 'string' ? logoResult.data.logo_pic : null
+              );
+              setPendingLogoFile(null);
+              setPreviewLogo(null);
+              setClearShopLogo(false);
+            }
+          } else if (clearShopLogo) {
+            const logoRes = await fetchWithAuth(
+              `/api/shops/${encodeURIComponent(shopCode)}/logo`,
+              token,
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ clear: true }),
+              }
+            );
+            const logoResult = await logoRes.json();
+            if (!logoResult?.success) {
+              errors.push(logoResult?.error || t.sections.shopLogo.clearFailed);
+            } else {
+              setShopLogoBase64(null);
+              setClearShopLogo(false);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to save shop logo', err);
+          errors.push(t.errors.shopLogoSaveFailed);
+        }
+      }
+
       if (errors.length === 0) {
         messageApi.success(t.messages.saved);
         form.setFieldsValue({
           system_name: nameResult?.data?.system_name ?? values.system_name,
           logo: nameResult?.data?.logo ?? values.logo,
-          shop_logo: nameResult?.data?.shop_logo ?? values.shop_logo,
           idle: idleResult.data?.idle ?? values.idle,
           quotation_valid_days: qtaResult.data?.quotation_valid_days ?? values.quotation_valid_days,
           page_size_default: pgResult.data?.page_size_default ?? values.page_size_default,
@@ -214,8 +367,8 @@ export default function SystemSettingsPage() {
           language: langResult.data?.language ?? values.language,
           timezone: tzResult.data?.timezone ?? values.timezone,
         });
+        clearSystemBrandingCache();
 
-        // Update client cache so all pages pick it up quickly
         if (typeof window !== 'undefined') {
           sessionStorage.setItem(
             '__system_pagination',
@@ -243,6 +396,7 @@ export default function SystemSettingsPage() {
               detail: idleResult.data?.idle ?? values.idle,
             })
           );
+          window.dispatchEvent(new CustomEvent('app-shop-logo-changed'));
         }
       } else {
         messageApi.error(errors.join(' | '));
@@ -255,7 +409,14 @@ export default function SystemSettingsPage() {
     }
   };
 
+  const displayLogoSrc = previewLogo
+    ? shopLogoBase64ToDataUrl(previewLogo)
+    : !clearShopLogo && shopLogoBase64
+      ? shopLogoBase64ToDataUrl(shopLogoBase64)
+      : null;
+
   return (
+    <RequireViewPermission permission="view_system" lang={lang}>
     <BasicPageLayout
       breadcrumb={
         <Breadcrumb
@@ -291,7 +452,6 @@ export default function SystemSettingsPage() {
             initialValues={{
               system_name: 'ERP System',
               logo: '',
-              shop_logo: '',
               idle: 10,
               quotation_valid_days: 30,
               page_size_default: 100,
@@ -337,16 +497,65 @@ export default function SystemSettingsPage() {
                   </div>
                 </div>
 
-                {/* Shop logo */}
+                {/* Shop logo (binary upload → t_shop.logo_pic) */}
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:gap-6">
                   <div className="md:w-80">
                     <div className="font-semibold text-gray-900">{t.sections.shopLogo.title}</div>
                     <Text type="secondary">{t.sections.shopLogo.hint}</Text>
+                    {shopCode ? (
+                      <div className="mt-1 text-sm text-gray-600">
+                        {t.sections.shopLogo.forShop(shopLabel)}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-sm text-amber-700">{t.sections.shopLogo.noShop}</div>
+                    )}
                   </div>
                   <div className="md:w-80 flex-1">
-                    <Form.Item name="shop_logo" style={{ marginBottom: 0 }}>
-                      <Input placeholder={t.sections.shopLogo.placeholder} maxLength={512} />
-                    </Form.Item>
+                    <div className="w-[160px] h-[160px] bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden relative">
+                      {shopCode ? (
+                        <>
+                          <Upload
+                            showUploadList={false}
+                            beforeUpload={beforeUploadLogo}
+                            onChange={handleLogoChange}
+                            accept={LOGO_ACCEPT}
+                            disabled={loading || saving}
+                            key={previewLogo || shopLogoBase64 || (clearShopLogo ? 'cleared' : 'empty')}
+                          >
+                            {displayLogoSrc ? (
+                              <img
+                                src={displayLogoSrc}
+                                alt={t.sections.shopLogo.title}
+                                className="w-[160px] h-[160px] object-contain bg-white"
+                              />
+                            ) : (
+                              <div className="text-gray-500 text-center flex flex-col items-center justify-center h-full px-2 cursor-pointer">
+                                <PictureOutlined style={{ fontSize: 36 }} />
+                                <div className="text-sm mt-1">{t.sections.shopLogo.upload}</div>
+                                <div className="text-xs mt-1 opacity-80">
+                                  {t.sections.shopLogo.imageFileTypesHint}
+                                </div>
+                              </div>
+                            )}
+                          </Upload>
+                          {(previewLogo || (!clearShopLogo && shopLogoBase64)) && (
+                            <Button
+                              size="small"
+                              danger
+                              style={{ position: 'absolute', top: 8, right: 8, zIndex: 2 }}
+                              onClick={handleRemoveLogo}
+                              disabled={loading || saving}
+                            >
+                              {t.sections.shopLogo.remove}
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <div className="text-gray-400 text-center text-sm px-3">
+                          {t.sections.shopLogo.noShop}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -537,6 +746,6 @@ export default function SystemSettingsPage() {
         </Card>
       </div>
     </BasicPageLayout>
+    </RequireViewPermission>
   );
 }
-

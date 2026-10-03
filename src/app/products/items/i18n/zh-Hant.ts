@@ -169,7 +169,7 @@ export const zhHant = {
     },
     warehouseColumns: {
       qty: '數量',
-      type: '類型',
+      shop: '店舖',
       updated: '更新時間',
     },
     deleteModal: {

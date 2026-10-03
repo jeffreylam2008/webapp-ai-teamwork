@@ -6,6 +6,7 @@ import {
   canManageEmployeeAccess,
   ensureAdministratorAccessForEmployee,
   ensureEmployeeRoleTable,
+  ensureEmployeeAccessDefaultTable,
   isAdministratorEmployee,
 } from '@/lib/employeeRoleAccess';
 
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest) {
     let roleCode = Number(auth.user.role_code ?? 0);
 
     await ensureEmployeeRoleTable();
+    await ensureEmployeeAccessDefaultTable();
     const employeeRow = shopCode
       ? await dbService.query<{ role_code: number | null }>(
           'SELECT role_code FROM t_employee WHERE employee_code = ? AND default_shopcode = ? LIMIT 1',

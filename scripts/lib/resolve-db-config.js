@@ -1,29 +1,38 @@
-/**
- * Shared with src/lib/db-credential-utils.ts — keep masking rules in sync.
- */
-function isMaskedDbCredential(value) {
-  if (value == null) return true;
-  const s = String(value).trim();
-  if (!s) return true;
-  if (/^[*•x\-]+$/i.test(s)) return true;
-  const lower = s.toLowerCase();
-  if (lower === '<masked>' || lower === 'from_env' || lower === 'env') return true;
-  return false;
-}
+const path = require('path');
+const fs = require('fs');
 
-function resolveDbCredential(fromJson, fromEnv) {
-  if (!isMaskedDbCredential(fromJson)) {
-    return String(fromJson).trim();
+require('dotenv').config({ path: path.join(process.cwd(), '.env.local') });
+
+const REQUIRED_ENV_VARS = ['DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+
+function assertEnvLocalConfigured() {
+  const envPath = path.join(process.cwd(), '.env.local');
+  if (!fs.existsSync(envPath)) {
+    console.error(
+      'Application locked: `.env.local` was not found. Create it in the project root with DB_USER, DB_PASSWORD, DB_NAME, DB_HOST, and DB_PORT.'
+    );
+    process.exit(1);
   }
-  const envVal = fromEnv != null ? String(fromEnv).trim() : '';
-  if (envVal) return envVal;
-  return String(fromJson ?? '').trim();
+
+  const missing = REQUIRED_ENV_VARS.filter((key) => {
+    if (key === 'DB_PASSWORD') return process.env.DB_PASSWORD === undefined;
+    return !process.env[key]?.trim();
+  });
+
+  if (missing.length > 0) {
+    console.error(
+      `Application locked: missing required variables in \`.env.local\`: ${missing.join(', ')}.`
+    );
+    process.exit(1);
+  }
 }
 
 /**
- * @param {Record<string, unknown>} dbConfig parsed db-config.json
+ * @param {Record<string, unknown>} dbConfig parsed db-config.json (pool settings only)
  */
 function resolveDbConfig(dbConfig) {
+  assertEnvLocalConfigured();
+
   const env = process.env;
   const portRaw = env.DB_PORT?.trim();
   const portParsed = portRaw ? Number.parseInt(portRaw, 10) : NaN;
@@ -32,14 +41,13 @@ function resolveDbConfig(dbConfig) {
     ...dbConfig,
     host: (env.DB_HOST && env.DB_HOST.trim()) || dbConfig.host,
     port: Number.isFinite(portParsed) ? portParsed : dbConfig.port || 3306,
-    user: resolveDbCredential(dbConfig.user, env.DB_USER),
-    password: resolveDbCredential(dbConfig.password, env.DB_PASSWORD),
-    database: (env.DB_NAME && env.DB_NAME.trim()) || dbConfig.database,
+    user: env.DB_USER.trim(),
+    password: env.DB_PASSWORD,
+    database: env.DB_NAME.trim(),
   };
 }
 
 module.exports = {
-  isMaskedDbCredential,
-  resolveDbCredential,
+  assertEnvLocalConfigured,
   resolveDbConfig,
 };

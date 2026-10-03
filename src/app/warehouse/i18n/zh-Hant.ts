@@ -193,6 +193,22 @@ export const warehouseZhHant = {
     notPO: '所選交易不是採購單',
     itemQtyIncreased: '數量已增加',
     itemAdded: '已加入',
+    purchaseOrderTitle: '選擇要收貨的採購單',
+    purchaseOrderHint:
+      '請選擇已提交的採購單以建立收貨單。系統會產生收貨單編號，提醒倉務人員收貨。',
+    loadingPO: '正在載入採購單…',
+    selectPO: '選擇採購單',
+    noOpenPO: '沒有待收貨的採購單。請先提交採購單，再建立收貨單。',
+    skip: '略過',
+    continue: '繼續',
+    selectPORequired: '請選擇採購單以建立收貨單。',
+    failedLoadPOList: '無法載入採購單',
+    failedPrepare: '無法從採購單準備收貨單',
+    unknownSupplier: '未知供應商',
+    receiveAlertTitle: '已產生收貨單編號 — 請收貨',
+    receiveAlertBody: (grn: string, po: string) =>
+      `收貨單 ${grn} 已就緒。請為採購單 ${po} 收貨。`,
+    receiveAlertOk: '開始收貨',
   },
   adjustment: {
     breadcrumbSegment: '庫存調整',

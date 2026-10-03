@@ -49,40 +49,41 @@ export async function POST(request: NextRequest) {
       console.log('[AUTH] Shop validated:', selectedShop);
     }
 
-    // Query employee from database
+    // Username is unique per company/shop (default_shopcode), not globally.
+    // Always resolve the employee with shop when provided so HQ01/HQ02 "iamadmin" do not collide.
     const result = await dbService.query<EmployeeRecord>(
-      `SELECT uid, employee_code, username, password, default_shopcode, role_code, status 
-       FROM t_employee 
-       WHERE username = ? AND status = 1`,
-      [username]
+      requestedShopCode
+        ? `SELECT uid, employee_code, username, password, default_shopcode, role_code, status
+           FROM t_employee
+           WHERE username = ? AND default_shopcode = ? AND status = 1
+           LIMIT 1`
+        : `SELECT uid, employee_code, username, password, default_shopcode, role_code, status
+           FROM t_employee
+           WHERE username = ? AND status = 1`,
+      requestedShopCode ? [username, requestedShopCode] : [username]
     );
 
     if (!result.data || result.data.length === 0) {
-      console.log('[AUTH] User not found or inactive');
+      console.log(
+        '[AUTH] User not found or inactive',
+        requestedShopCode ? `for shop ${requestedShopCode}` : '(no shop selected)'
+      );
       return NextResponse.json(
         { success: false, error: 'Invalid username or password' },
         { status: 401 }
       );
     }
 
-    // When employees share the same username (e.g. one per shop), require that the selected shop actually has
-    // an account for this username. If no employee row exists for the chosen shop, reject the login.
     const employees = result.data as EmployeeRecord[];
-    let employee: EmployeeRecord | null = null;
-
-    if (requestedShopCode) {
-      const match = employees.find((e) => e.default_shopcode === requestedShopCode);
-      if (!match) {
-        console.log('[AUTH] No employee for username in selected shop:', username, requestedShopCode);
-        return NextResponse.json(
-          { success: false, error: 'Invalid username or password' },
-          { status: 401 }
-        );
-      }
-      employee = match;
-    } else {
-      employee = employees[0];
+    if (!requestedShopCode && employees.length > 1) {
+      console.log('[AUTH] Ambiguous username across companies; shop required:', username);
+      return NextResponse.json(
+        { success: false, error: 'Please select a company/shop to sign in' },
+        { status: 400 }
+      );
     }
+
+    const employee = employees[0];
 
     // Verify password - support both bcrypt and PHP crypt()
     let isPasswordValid = false;

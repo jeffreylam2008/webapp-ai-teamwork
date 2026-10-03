@@ -8,7 +8,6 @@ import {
   Statistic, 
   Button, 
   Table, 
-  Space,
   Modal,
   Spin,
 } from 'antd';
@@ -289,20 +288,18 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
 
   // Button bar
   const buttonBar = (
-    <div className="px-4 py-3 bg-white border-b border-gray-200">
-      <Space>
-        {allActionButtons.map(button => (
-          <Button
-            key={button.key}
-            type={button.type}
-            icon={button.icon}
-            onClick={button.onClick}
-            loading={button.loading}
-          >
-            {button.label}
-          </Button>
-        ))}
-      </Space>
+    <div className="page-toolbar px-3 sm:px-4 py-3 bg-white border-b border-gray-200">
+      {allActionButtons.map((button) => (
+        <Button
+          key={button.key}
+          type={button.type}
+          icon={button.icon}
+          onClick={button.onClick}
+          loading={button.loading}
+        >
+          {button.label}
+        </Button>
+      ))}
     </div>
   );
 
@@ -314,10 +311,10 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
       <div className="mb-6 p-4 bg-gray-50 border border-gray-300 rounded-md">
         <h4 className="text-lg font-semibold text-gray-900 mb-4">{ui.filterOptionsTitle}</h4>
         
-        <div className="flex gap-4 items-center flex-wrap mb-4">
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 sm:items-center flex-wrap mb-4">
           {filters.map(filter => (
-            <div key={filter.key} className="flex gap-2 items-center">
-              <label className="font-bold text-gray-700 min-w-20">{filter.label}:</label>
+            <div key={filter.key} className="flex flex-col sm:flex-row gap-1 sm:gap-2 sm:items-center w-full sm:w-auto min-w-0">
+              <label className="font-bold text-gray-700 sm:min-w-20 shrink-0">{filter.label}:</label>
               {filter.type === 'search' && (
                 <input
                   type="text"
@@ -328,7 +325,7 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
                     setLocalFilters(newFilters);
                     onFilterChange?.(newFilters);
                   }}
-                  className="px-3 py-2 border border-gray-300 rounded-md min-w-[300px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 border border-gray-300 rounded-md w-full sm:min-w-[220px] sm:max-w-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               )}
               {filter.type === 'select' && (
@@ -339,7 +336,7 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
                     setLocalFilters(newFilters);
                     onFilterChange?.(newFilters);
                   }}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="px-3 py-2 border border-gray-300 rounded-md w-full sm:w-auto focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="">{ui.allPrefix} {filter.label}</option>
                   {filter.options?.map(option => (
@@ -407,9 +404,9 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
         <div className="px-4 py-6 bg-white">
           {/* Statistics Cards */}
           {statistics.length > 0 && (
-            <Row gutter={16} style={{ marginBottom: '24px' }}>
+            <Row gutter={[12, 12]} style={{ marginBottom: '24px' }}>
               {statistics.map((stat, index) => (
-                <Col key={index} span={24 / statistics.length}>
+                <Col key={index} xs={24} sm={12} lg={6}>
                   <Card>
                     <Statistic
                       title={stat.title}
@@ -430,7 +427,7 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
           {children}
 
           {/* Data Table */}
-          <Card>
+          <Card className="table-scroll-host">
             <Table
               columns={enhancedColumns}
               dataSource={dataSource}
@@ -438,7 +435,7 @@ const DataTableLayout: React.FC<DataTableLayoutProps> = ({
               rowKey={rowKey}
               pagination={pagination}
               onChange={onChange}
-              scroll={{ x: 1200 }}
+              scroll={{ x: 'max-content' }}
             />
           </Card>
         </div>

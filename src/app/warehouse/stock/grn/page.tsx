@@ -12,7 +12,8 @@ import { DeleteOutlined, SaveOutlined, CloseOutlined, SearchOutlined } from '@an
 import { Form, Input, type InputRef, DatePicker, Select, Button, Table, message, Card, Row, Col, Typography, Modal, Spin, InputNumber, Space } from 'antd';
 import dayjs from 'dayjs';
 import { TransactionGenerator } from '@/services/transactionGenerator';
-import { useBackNavigation } from '@/hooks/useBackNavigation';
+import { useLeavePageGuard } from '@/hooks/useLeavePageGuard';
+import { isGeneratedTransactionNumber } from '@/lib/transactionDraft';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchWithAuth } from '@/lib/bearerAuthHeaders';
 import { formatCurrency } from '@/utils/formatCurrency';
@@ -94,6 +95,13 @@ interface TransactionDetailResponse {
   discount?: number;
 }
 
+interface PurchaseOrderSummary {
+  transaction_id: string;
+  supplier_name?: string;
+  supplier_code?: string;
+  transaction_date?: string;
+}
+
 function GRNPageContent() {
   const router = useRouter();
   const { token, user } = useAuth();
@@ -103,8 +111,10 @@ function GRNPageContent() {
   const w = useMemo(() => getWarehouseTexts(lang), [lang]);
   const g = w.grn;
   const editTransCode = searchParams.get('transCode') || '';
-  const poTransCode = searchParams.get('po') || '';
+  const urlPoCode = searchParams.get('po') || '';
   const isEditMode = !!editTransCode;
+  const [pickedPoCode, setPickedPoCode] = useState('');
+  const poTransCode = urlPoCode || pickedPoCode;
   const isFromPO = !!poTransCode && !isEditMode;
 
   const [form] = Form.useForm();
@@ -123,6 +133,12 @@ function GRNPageContent() {
 
   const [reservedTransCode, setReservedTransCode] = useState('');
   const [showSaveConfirmModal, setShowSaveConfirmModal] = useState(false);
+  const [showReceiveAlertModal, setShowReceiveAlertModal] = useState(false);
+  const [showPoModal, setShowPoModal] = useState(() => !isEditMode && !urlPoCode);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderSummary[]>([]);
+  const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
+  const [poContinueLoading, setPoContinueLoading] = useState(false);
+  const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<string | undefined>();
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [showVoidModal, setShowVoidModal] = useState(false);
   const [voiding, setVoiding] = useState(false);
@@ -131,6 +147,78 @@ function GRNPageContent() {
   const itemSearchInputRef = useRef<InputRef>(null);
   const pendingNavigateRef = useRef<string | null>(null);
   const allowNavigationRef = useRef(false);
+  const pendingPoAssignRef = useRef(false);
+
+  const loadPurchaseOrdersForGrn = useCallback(async () => {
+    setPurchaseOrdersLoading(true);
+    try {
+      const response = await fetchWithAuth(
+        `/api/grn/purchase-orders?_=${Date.now()}`,
+        token,
+        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || g.failedLoadPOList);
+      }
+      const list = Array.isArray(result.data) ? (result.data as PurchaseOrderSummary[]) : [];
+      setPurchaseOrders(
+        list
+          .map((row) => ({
+            transaction_id: String(row.transaction_id || '').trim(),
+            supplier_name: row.supplier_name,
+            supplier_code: row.supplier_code,
+            transaction_date: row.transaction_date,
+          }))
+          .filter((row) => row.transaction_id)
+      );
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : g.failedLoadPOList);
+      setPurchaseOrders([]);
+    } finally {
+      setPurchaseOrdersLoading(false);
+    }
+  }, [token, g]);
+
+  useEffect(() => {
+    if (!showPoModal) return;
+    void loadPurchaseOrdersForGrn();
+  }, [showPoModal, loadPurchaseOrdersForGrn]);
+
+  const assignGrnNumberAndAlert = useCallback(async (alertPoCode?: string) => {
+    if (isEditMode) return;
+    if (reservedTransCode) {
+      if (alertPoCode) setShowReceiveAlertModal(true);
+      return reservedTransCode;
+    }
+    setGeneratingNumber(true);
+    try {
+      const sessionId = browserSessionId || ensureBrowserSessionId(GRN_SESSION_KEY);
+      if (!browserSessionId) setBrowserSessionId(sessionId);
+      const code = await reserveGrnNumber(sessionId);
+      setReservedTransCode(code);
+      form.setFieldsValue({ grn_no: code });
+      if (alertPoCode) setShowReceiveAlertModal(true);
+      return code;
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : g.failedGen);
+      throw error;
+    } finally {
+      setGeneratingNumber(false);
+    }
+  }, [isEditMode, reservedTransCode, browserSessionId, form, g]);
+
+  const handleBackToStock = useLeavePageGuard({
+    router,
+    allowNavigationRef,
+    pendingNavigateRef,
+    hasTransactionNumber: !isEditMode && isGeneratedTransactionNumber(reservedTransCode),
+    fallbackPath: '/warehouse/stock',
+    onWarn: () => setShowDiscardModal(true),
+    onLeaveWithoutNumber: () => {
+      sessionStorage.removeItem(GRN_SESSION_KEY);
+    },
+  });
 
   // When creating GRN from PO: PO header, details, and received qty per item
   const [poHeader, setPoHeader] = useState<TransactionHeaderResponse | null>(null);
@@ -138,65 +226,17 @@ function GRNPageContent() {
   const [receivedPerItem, setReceivedPerItem] = useState<Record<string, number>>({});
   const [poReceivedLoaded, setPoReceivedLoaded] = useState(false);
 
-  // Initialize browser session (create flow only); number is reserved on save
+  // Initialize browser session (create flow only); number is reserved on save or after PO pick
   useEffect(() => {
     if (isEditMode) return;
-    // PO→GRN: always start a new generator session so we never reuse a stale reservation.
-    if (poTransCode) {
+    // URL PO→GRN: always start a new generator session so we never reuse a stale reservation.
+    if (urlPoCode) {
       sessionStorage.removeItem(GRN_SESSION_KEY);
       setReservedTransCode('');
     }
     const sessionId = ensureBrowserSessionId(GRN_SESSION_KEY);
     setBrowserSessionId(sessionId);
-  }, [isEditMode, poTransCode]);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { href } = (e as CustomEvent<{ href: string }>).detail;
-      pendingNavigateRef.current = href;
-      setShowDiscardModal(true);
-    };
-    window.addEventListener('app-navigate-request', handler);
-    return () => window.removeEventListener('app-navigate-request', handler);
-  }, []);
-
-  useEffect(() => {
-    const originalPush = router.push.bind(router) as typeof router.push;
-    const originalReplace = router.replace.bind(router) as typeof router.replace;
-
-    router.push = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalPush(href as Parameters<typeof originalPush>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    router.replace = (href: string | { pathname: string }, options?: { scroll?: boolean }) => {
-      if (allowNavigationRef.current) {
-        allowNavigationRef.current = false;
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      const hrefString = typeof href === 'string' ? href : (href as { pathname: string }).pathname;
-      if (typeof window === 'undefined' || hrefString === window.location.pathname || hrefString.startsWith('#')) {
-        return originalReplace(href as Parameters<typeof originalReplace>[0], options);
-      }
-      pendingNavigateRef.current = hrefString;
-      setShowDiscardModal(true);
-      return Promise.resolve(undefined as void);
-    };
-
-    return () => {
-      router.push = originalPush;
-      router.replace = originalReplace;
-    };
-  }, [router]);
+  }, [isEditMode, urlPoCode]);
 
   const loadShops = useCallback(async () => {
     const response = await fetch('/api/shops?warehouseOnly=1');
@@ -393,6 +433,15 @@ function GRNPageContent() {
     setItems(rows);
   }, [isFromPO, poHeader, poDetails, receivedPerItem, poTransCode, form]);
 
+  useEffect(() => {
+    if (!isFromPO || !poReceivedLoaded || !browserSessionId) return;
+    if (pendingPoAssignRef.current) return;
+    pendingPoAssignRef.current = true;
+    void assignGrnNumberAndAlert(poTransCode).catch(() => {
+      pendingPoAssignRef.current = false;
+    });
+  }, [isFromPO, poReceivedLoaded, browserSessionId, poTransCode, assignGrnNumberAndAlert]);
+
   // Sync supplier display name when suppliers load (e.g. after edit load)
   useEffect(() => {
     if (!selectedSupplier || selectedSupplier.name !== selectedSupplier.supp_code) return;
@@ -472,17 +521,6 @@ function GRNPageContent() {
 
   const showDiscardConfirm = () => setShowDiscardModal(true);
   const showVoidConfirm = () => setShowVoidModal(true);
-
-  const handleBackToStock = () => {
-    if (isEditMode) {
-      allowNavigationRef.current = true;
-      router.push('/warehouse/stock');
-    } else {
-      showDiscardConfirm();
-    }
-  };
-
-  useBackNavigation(handleBackToStock);
 
   const handleVoid = async () => {
     if (!isEditMode || !editTransCode) return;
@@ -1002,6 +1040,114 @@ function GRNPageContent() {
             size="small"
           />
         </Modal>
+
+        {/* Purchase Order selection before generating GRN number */}
+        <Modal
+          title={g.purchaseOrderTitle}
+          open={showPoModal}
+          onCancel={() => {
+            setShowPoModal(false);
+            allowNavigationRef.current = true;
+            router.push('/warehouse/stock');
+          }}
+          maskClosable={false}
+          footer={[
+            <Button
+              key="cancel"
+              onClick={() => {
+                setShowPoModal(false);
+                allowNavigationRef.current = true;
+                router.push('/warehouse/stock');
+              }}
+            >
+              {g.cancel}
+            </Button>,
+            <Button
+              key="skip"
+              loading={poContinueLoading}
+              onClick={() => {
+                setPickedPoCode('');
+                setShowPoModal(false);
+              }}
+            >
+              {g.skip}
+            </Button>,
+            <Button
+              key="next"
+              type="primary"
+              loading={purchaseOrdersLoading || poContinueLoading}
+              onClick={() => {
+                if (!selectedPurchaseOrder) {
+                  message.error(g.selectPORequired);
+                  return;
+                }
+                setPoContinueLoading(true);
+                try {
+                  sessionStorage.removeItem(GRN_SESSION_KEY);
+                  setReservedTransCode('');
+                  const sessionId = ensureBrowserSessionId(GRN_SESSION_KEY);
+                  setBrowserSessionId(sessionId);
+                  pendingPoAssignRef.current = false;
+                  setPickedPoCode(selectedPurchaseOrder);
+                  setShowPoModal(false);
+                } finally {
+                  setPoContinueLoading(false);
+                }
+              }}
+              disabled={purchaseOrders.length === 0}
+            >
+              {g.continue}
+            </Button>,
+          ]}
+          width={600}
+        >
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600">{g.purchaseOrderHint}</p>
+            <Select
+              showSearch
+              placeholder={purchaseOrdersLoading ? g.loadingPO : g.selectPO}
+              optionFilterProp="label"
+              loading={purchaseOrdersLoading}
+              value={selectedPurchaseOrder}
+              onChange={(value) => setSelectedPurchaseOrder(value)}
+              className="w-full"
+              options={purchaseOrders.map((po) => ({
+                value: po.transaction_id,
+                label: `${po.transaction_id} - ${po.supplier_name || po.supplier_code || g.unknownSupplier}${
+                  po.transaction_date ? ` (${dayjs(po.transaction_date).format('YYYY-MM-DD')})` : ''
+                }`,
+              }))}
+            />
+            {!purchaseOrdersLoading && purchaseOrders.length === 0 && (
+              <p className="text-xs text-red-500">{g.noOpenPO}</p>
+            )}
+          </div>
+        </Modal>
+
+        {!isEditMode && (
+          <Modal
+            title={g.receiveAlertTitle}
+            open={showReceiveAlertModal}
+            onOk={() => setShowReceiveAlertModal(false)}
+            onCancel={() => setShowReceiveAlertModal(false)}
+            okText={g.receiveAlertOk}
+            cancelButtonProps={{ style: { display: 'none' } }}
+            maskClosable={false}
+          >
+            <p>
+              {reservedTransCode && poTransCode
+                ? g.receiveAlertBody(reservedTransCode, poTransCode)
+                : g.numberGenerated}
+            </p>
+            {reservedTransCode && (
+              <Input
+                value={reservedTransCode}
+                disabled
+                style={{ marginTop: 12, backgroundColor: '#f5f5f5', color: '#333', fontWeight: 600 }}
+              />
+            )}
+          </Modal>
+        )}
 
         {!isEditMode && (
           <Modal

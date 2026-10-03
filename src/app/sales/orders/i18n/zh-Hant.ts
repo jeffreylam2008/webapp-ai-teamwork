@@ -51,11 +51,13 @@ export const zhHant = {
     confirmOrder: '確認訂單',
     voidOrder: '作廢訂單',
     createInvoice: '建立發票',
+    cloneOrder: '複製為新訂單',
   },
   rowStatus: {
     Draft: '草稿',
     Active: '有效',
     Settled: '已結算',
+    Converted: '已轉換',
     Void: '作廢',
     Confirmed: '已確認',
   },
@@ -87,7 +89,7 @@ export const zhHant = {
     errorDiscard: '放棄交易時發生錯誤',
     confirmTitle: '確認銷售訂單？',
     confirmContent: (code: string) =>
-      `即將確認銷售訂單「${code}」。系統會從倉庫扣減庫存，並將訂單標記為已結算，此操作無法復原。確定要繼續嗎？`,
+      `即將確認銷售訂單「${code}」。庫存將維持預留，訂單標記為已確認；實際倉庫數量會在建立送貨單時扣減。此操作無法復原。確定要繼續嗎？`,
     confirmOk: '確認訂單',
     confirmCancel: '取消',
     confirmFailed: '無法確認銷售訂單',
@@ -103,6 +105,9 @@ export const zhHant = {
     createInvoiceStarted: '正在由銷售訂單準備發票…',
     createInvoiceFailed: '無法由銷售訂單建立發票',
     invoiceSessionNotReady: '發票工作階段未就緒，請再試一次。',
+    cloneStarted: '正在複製銷售訂單…',
+    failedClone: '無法複製銷售訂單',
+    errorClone: '複製銷售訂單時發生錯誤',
   },
   print: {
     documentTitle: '銷售訂單',
@@ -162,6 +167,7 @@ export const zhHant = {
     },
     voidOrder: '作廢訂單',
     createInvoice: '建立發票',
+    cloneOrder: '複製為新訂單',
     voidConfirmTitle: '作廢此銷售訂單？',
     voidConfirmBody: '訂單將標記為作廢，無法再作交貨用途。',
     voidConfirmWithQuotation:

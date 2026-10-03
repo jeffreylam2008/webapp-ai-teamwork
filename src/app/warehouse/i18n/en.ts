@@ -50,7 +50,7 @@ export const warehouseEn = {
     phone: 'Phone',
     salesOrderTitle: 'Select Sales Order for Delivery',
     salesOrderHint:
-      'Select a confirmed Sales Order for this delivery note. Only confirmed orders are listed. Warehouse stock was already deducted when the order was confirmed.',
+      'Select a confirmed Sales Order for this delivery note. Only confirmed orders are listed. Saving the delivery note deducts warehouse stock and clears the sales-order reservation.',
     loadingSO: 'Loading Sales Orders...',
     selectSO: 'Select a Sales Order',
     noSettledSO:
@@ -58,7 +58,7 @@ export const warehouseEn = {
     soStatusDraft: 'Draft',
     soStatusSettled: 'Confirmed',
     soDraftWarning:
-      'This sales order is not confirmed yet. Saving the delivery note will deduct warehouse stock. Confirm the order later only if no delivery note was created, to avoid double deduction.',
+      'This sales order is not confirmed yet. Confirm the order first so stock stays reserved, then create the delivery note to deduct warehouse stock.',
     soVoidCannotUse: 'Cannot use a void sales order for a delivery note.',
     soDraftCannotUse:
       'This sales order is not confirmed yet. Confirm the order first, or use Skip to create a delivery note without a sales order reference.',

@@ -173,7 +173,7 @@ export async function POST(request: NextRequest) {
       await syncSalesOrderWarehouseStageHold({
         transCode: orderCode,
         shopCode: scopeShop,
-        effectivePrefix: 'SO',
+        effectivePrefix: PREFIX_REF.SO,
         effectiveIsVoid: 0,
         effectiveIsSettle: 0,
         detailQtyByItem: soHoldMap,

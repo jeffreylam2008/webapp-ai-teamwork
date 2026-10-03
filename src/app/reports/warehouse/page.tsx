@@ -36,6 +36,7 @@ import { buildWarehouseStockPrefixList } from '@/config/transactionPermissions';
 import {
   isMovementGroup,
   WAREHOUSE_MOVEMENT_LABELS,
+  warehouseMovementLabelKey,
   type WarehouseReportGroupBy,
 } from './groupBy';
 
@@ -142,7 +143,7 @@ export default function WarehouseReportPage() {
 
   const movementLabel = useCallback(
     (code: string) => {
-      const key = String(code || '').trim().toUpperCase();
+      const key = warehouseMovementLabelKey(code);
       const entry = WAREHOUSE_MOVEMENT_LABELS[key];
       if (!entry) return key || '-';
       return lang === 'zh-Hant' ? entry.zh : entry.en;

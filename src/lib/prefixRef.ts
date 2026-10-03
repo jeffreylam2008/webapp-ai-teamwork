@@ -42,6 +42,11 @@ export const DISPLAY_TO_PREFIX_REF: Record<string, string> = Object.fromEntries(
   Object.entries(DEFAULT_DISPLAY_BY_REF).map(([ref, display]) => [display, ref])
 );
 
+/** Extra legacy document codes (e.g. GR vs GRN) → prefix_ref */
+export const EXTRA_DISPLAY_TO_PREFIX_REF: Record<string, string> = {
+  GR: PREFIX_REF.GRN,
+};
+
 const REF_SET = new Set(Object.values(PREFIX_REF).map((r) => r.toUpperCase()));
 
 export function isPrefixRef(value: string | null | undefined): boolean {
@@ -57,6 +62,7 @@ export function normalizeToPrefixRef(value: string | null | undefined): string {
   const raw = String(value || '').trim().toUpperCase();
   if (!raw) return '';
   if (DISPLAY_TO_PREFIX_REF[raw]) return DISPLAY_TO_PREFIX_REF[raw];
+  if (EXTRA_DISPLAY_TO_PREFIX_REF[raw]) return EXTRA_DISPLAY_TO_PREFIX_REF[raw];
   if (raw.startsWith('_')) return raw;
   return raw;
 }
@@ -112,6 +118,28 @@ export function storedTransactionPrefix(prefixRef: string): string {
   return storedTransactionHeaderRef(prefixRef);
 }
 
+function uniqueMatchTokensForRefs(refs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (value: string) => {
+    const u = String(value || '').trim().toUpperCase();
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+  for (const raw of refs) {
+    const normalized = normalizeToPrefixRef(raw) || String(raw || '').trim().toUpperCase();
+    if (!normalized) continue;
+    add(normalized);
+    add(defaultDisplayForRef(normalized));
+    add(raw);
+    for (const [alias, mapped] of Object.entries(EXTRA_DISPLAY_TO_PREFIX_REF)) {
+      if (mapped === normalized) add(alias);
+    }
+  }
+  return out;
+}
+
 /**
  * SQL: match rows by t_transaction_h.prefix_ref (legacy fallback on prefix column).
  */
@@ -122,21 +150,16 @@ export function bindParamsForPrefixRefMatch(
   sql: string;
   params: string[];
 } {
-  const refsUpper = refs.map((r) => String(r).trim().toUpperCase()).filter(Boolean);
-  const displays = refsUpper.map((r) => defaultDisplayForRef(r).toUpperCase());
-  const refPh = refsUpper.map(() => '?').join(',');
-  const dispPh = displays.map(() => '?').join(',');
+  const tokens = uniqueMatchTokensForRefs(refs);
+  if (tokens.length === 0) {
+    return { sql: '1=0', params: [] };
+  }
+  const ph = tokens.map(() => '?').join(',');
   const sql = `(
-    UPPER(TRIM(COALESCE(${alias}.prefix_ref, ''))) IN (${refPh})
-    OR (
-      TRIM(COALESCE(${alias}.prefix_ref, '')) = ''
-      AND (
-        UPPER(TRIM(COALESCE(${alias}.prefix, ''))) IN (${refPh})
-        OR UPPER(TRIM(COALESCE(${alias}.prefix, ''))) IN (${dispPh})
-      )
-    )
+    UPPER(TRIM(COALESCE(${alias}.prefix_ref, ''))) IN (${ph})
+    OR UPPER(TRIM(COALESCE(${alias}.prefix, ''))) IN (${ph})
   )`;
-  return { sql, params: [...refsUpper, ...refsUpper, ...displays] };
+  return { sql, params: [...tokens, ...tokens] };
 }
 
 export function prefixRefBind(prefixRef: string): [string, string] {
@@ -163,19 +186,18 @@ export function sqlPrefixInPair(ref: string): string {
 
 /** SQL IN list covering ref + legacy display for one or more refs. */
 export function sqlPrefixInList(refs: string[]): string {
-  const seen = new Set<string>();
-  const items: string[] = [];
-  for (const ref of refs) {
-    const r = storedTransactionPrefix(ref);
-    const d = defaultDisplayForRef(r).toUpperCase();
-    for (const v of [r, d]) {
-      if (!seen.has(v)) {
-        seen.add(v);
-        items.push(`'${v}'`);
-      }
-    }
-  }
-  return `(${items.join(', ')})`;
+  const tokens = uniqueMatchTokensForRefs(refs);
+  if (tokens.length === 0) return "('__NONE__')";
+  return `(${tokens.map((v) => `'${v.replace(/'/g, "''")}'`).join(', ')})`;
+}
+
+/** True when header prefix_ref or prefix is one of the given types (includes GR = GRN). */
+export function sqlHeaderMatchesPrefixRefs(alias: string, refs: string[]): string {
+  const list = sqlPrefixInList(refs);
+  return `(
+    UPPER(TRIM(COALESCE(${alias}.prefix_ref, ''))) IN ${list}
+    OR UPPER(TRIM(COALESCE(${alias}.prefix, ''))) IN ${list}
+  )`;
 }
 
 /** JOIN t_prefix to resolve current display code from stored prefix_ref. */

@@ -18,7 +18,6 @@ import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage
 import { markSalesOrderInvoiced } from '@/lib/salesOrderInvoiceConversion';
 import { rollbackQuotationIfSalesOrderFromConversion } from '@/lib/salesOrderQuotationRollback';
 import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
-import { deductWarehouseForConfirmedSalesOrder } from '@/lib/salesOrderConfirmWarehouse';
 import { ensureInvoiceSubtypeColumns } from '@/lib/ensureInvoiceSubtypeColumns';
 import { isMonthlyInvoiceSubtype } from '@/config/invoiceSubtypes';
 import {
@@ -440,7 +439,7 @@ export async function PUT(request: NextRequest) {
 
     if (newlyConfirmedSo && !String(stockShopCode || '').trim()) {
       return NextResponse.json(
-        { success: false, error: 'Sales order is missing shop or warehouse code for stock deduction' },
+        { success: false, error: 'Sales order is missing shop or warehouse code for stock reservation' },
         { status: 400 }
       );
     }
@@ -523,18 +522,15 @@ export async function PUT(request: NextRequest) {
         : ((prevDetailsRes.data || []) as { item_code?: string; qty?: unknown }[]);
     const soDetailQtyMap = sumDetailQtyByItem(soDetailRowsForHold);
 
+    // SO draft/confirm: keep reservation holds. Physical stock is deducted on DN create.
     await syncSalesOrderWarehouseStageHold({
       transCode,
       shopCode: stockShopCode,
-      effectivePrefix: effectivePrefixDisplay || effectivePrefix,
+      effectivePrefix,
       effectiveIsVoid,
       effectiveIsSettle,
       detailQtyByItem: soDetailQtyMap,
     });
-
-    if (newlyConfirmedSo) {
-      await deductWarehouseForConfirmedSalesOrder(transCode, stockShopCode);
-    }
 
     if (existsCnt === 0 && effectivePrefix === PREFIX_REF.INV && effectiveIsVoid === 0) {
       const soRef = String(normalizedHeader.refer_code ?? headerRaw.refer_code ?? '').trim();

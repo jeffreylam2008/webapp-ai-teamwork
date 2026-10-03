@@ -3,9 +3,10 @@ import dbService from '@/lib/database';
 
 /**
  * GET /api/warehouse/current-stock?item_codes=A,B,C
- * Returns current stock per item = t_warehouse.qty + SUM(t_warehouse_stage.qty).
- * Draft and confirmed SO reservations use t_warehouse_stage rows with type `hold` and negative qty
- * until a delivery note consumes them.
+ * Returns per item:
+ * - warehouse_qty: physical t_warehouse.qty
+ * - on_hold_qty: reserved SO holds (positive; from negative t_warehouse_stage qty)
+ * - current_stock / remain_qty: warehouse_qty + staged (available after holds)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -44,10 +45,20 @@ export async function GET(request: NextRequest) {
       stageMap.set(r.item_code, Number(r.staged_qty || 0));
     }
 
-    const data = itemCodes.map((item_code) => ({
-      item_code,
-      current_stock: (whMap.get(item_code) ?? 0) + (stageMap.get(item_code) ?? 0),
-    }));
+    const data = itemCodes.map((item_code) => {
+      const warehouse_qty = whMap.get(item_code) ?? 0;
+      const staged_qty = stageMap.get(item_code) ?? 0;
+      const on_hold_qty = Math.max(0, -staged_qty);
+      const remain_qty = warehouse_qty + staged_qty;
+      return {
+        item_code,
+        warehouse_qty,
+        on_hold_qty,
+        remain_qty,
+        /** @deprecated prefer remain_qty — kept for stocktake callers */
+        current_stock: remain_qty,
+      };
+    });
 
     return NextResponse.json({ success: true, data });
   } catch (error) {

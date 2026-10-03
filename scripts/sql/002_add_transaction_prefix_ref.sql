@@ -13,6 +13,7 @@ UPDATE t_transaction_h SET prefix_ref = '_QT' WHERE (prefix_ref IS NULL OR TRIM(
 UPDATE t_transaction_h SET prefix_ref = '_INV' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'INV';
 UPDATE t_transaction_h SET prefix_ref = '_PO' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'PO';
 UPDATE t_transaction_h SET prefix_ref = '_GR' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'GRN';
+UPDATE t_transaction_h SET prefix_ref = '_GR' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'GR';
 UPDATE t_transaction_h SET prefix_ref = '_DN' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'DN';
 UPDATE t_transaction_h SET prefix_ref = '_AD' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'ADJ';
 UPDATE t_transaction_h SET prefix_ref = '_ST' WHERE (prefix_ref IS NULL OR TRIM(prefix_ref) = '') AND UPPER(TRIM(prefix)) = 'ST';

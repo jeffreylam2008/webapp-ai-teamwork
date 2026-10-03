@@ -10,7 +10,7 @@ import {
   PREFIX_REF,
   bindParamsForPrefixRefMatch,
   sqlJoinPrefixDisplay,
-  sqlPrefixInList,
+  sqlHeaderMatchesPrefixRefs,
   sqlSelectDisplayPrefix,
   sqlStoredPrefixKey,
 } from '@/lib/prefixRef';
@@ -25,15 +25,15 @@ const ALL_WAREHOUSE_PREFIXES = [
 
 /** Qty into warehouse from a line */
 const QTY_IN_EXPR = `CASE
-  WHEN UPPER(TRIM(COALESCE(h.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.GRN])} THEN GREATEST(COALESCE(d.qty, 0), 0)
-  WHEN UPPER(TRIM(COALESCE(h.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.ADJ, PREFIX_REF.ST])} AND COALESCE(d.qty, 0) > 0 THEN d.qty
+  WHEN ${sqlHeaderMatchesPrefixRefs('h', [PREFIX_REF.GRN])} THEN GREATEST(COALESCE(d.qty, 0), 0)
+  WHEN ${sqlHeaderMatchesPrefixRefs('h', [PREFIX_REF.ADJ, PREFIX_REF.ST])} AND COALESCE(d.qty, 0) > 0 THEN d.qty
   ELSE 0
 END`;
 
 /** Qty out of warehouse from a line */
 const QTY_OUT_EXPR = `CASE
-  WHEN UPPER(TRIM(COALESCE(h.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.DN])} THEN GREATEST(COALESCE(d.qty, 0), 0)
-  WHEN UPPER(TRIM(COALESCE(h.prefix, ''))) IN ${sqlPrefixInList([PREFIX_REF.ADJ, PREFIX_REF.ST])} AND COALESCE(d.qty, 0) < 0 THEN ABS(d.qty)
+  WHEN ${sqlHeaderMatchesPrefixRefs('h', [PREFIX_REF.DN])} THEN GREATEST(COALESCE(d.qty, 0), 0)
+  WHEN ${sqlHeaderMatchesPrefixRefs('h', [PREFIX_REF.ADJ, PREFIX_REF.ST])} AND COALESCE(d.qty, 0) < 0 THEN ABS(d.qty)
   ELSE 0
 END`;
 
@@ -79,7 +79,7 @@ function buildWhereClause(
     params.push(endDate);
   }
   if (shopCode) {
-    clause += ` AND COALESCE(NULLIF(TRIM(h.wh_code), ''), h.shop_code) = ?`;
+    clause += ' AND h.shop_code = ?';
     params.push(shopCode);
   }
 

@@ -15,6 +15,7 @@ import { formatCurrency } from '@/utils/formatCurrency';
 import { prepareItemImageFileForUpload } from '@/lib/itemImageUpload';
 import { clearTransactionFormDataCache } from '@/hooks/useTransactionFormData';
 import { hasItemImage, imageBodyToDataUrl } from '@/lib/itemImageDisplay';
+import { PREFIX_REF } from '@/lib/prefixRef';
 
 const { Text } = Typography;
 
@@ -40,6 +41,8 @@ interface DbItem {
   cate_code?: string;
   type: number;
   unit?: string;
+  stock_on_hand?: number;
+  on_hold_qty?: number;
   image_name?: string;
   image_body?: string | null;
   create_date?: string;
@@ -76,6 +79,17 @@ interface Warehouse {
   shop_code?: string;
   create_date?: string;
   modify_date?: string;
+}
+
+interface ItemMovement {
+  trans_code: string;
+  date: string | null;
+  type_ref: string;
+  type_label: string;
+  refer_code: string;
+  shop_code: string;
+  qty: number;
+  qty_kind: 'on_hold' | 'current';
 }
 
 interface WarehouseResponse {
@@ -186,13 +200,14 @@ export default function ItemDetailPage() {
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const [categories, setCategories] = useState<{ cate_code: string; desc: string }[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [movements, setMovements] = useState<ItemMovement[]>([]);
+  const [movementsLoading, setMovementsLoading] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [showCannotDelete, setShowCannotDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const totalStockOnHand = useMemo(() => {
-    return warehouses.reduce((sum, w) => sum + (Number(w.stock_on_hand) || 0), 0);
-  }, [warehouses]);
+  const remainQty = useMemo(() => Number(item?.stock_on_hand ?? 0) || 0, [item]);
+  const onHoldQty = useMemo(() => Number(item?.on_hold_qty ?? 0) || 0, [item]);
 
   const beforeUploadItemImage = useCallback(
     (file: File) => {
@@ -239,6 +254,31 @@ export default function ItemDetailPage() {
     [token]
   );
 
+  const fetchItemMovements = useCallback(
+    async (code: string) => {
+      setMovementsLoading(true);
+      try {
+        const response = await fetchWithAuth(
+          `/api/products/item-movements?item_code=${encodeURIComponent(code)}&_=${Date.now()}`,
+          token,
+          { cache: 'no-store' }
+        );
+        const result = await response.json();
+        if (result.success && Array.isArray(result.data)) {
+          setMovements(result.data as ItemMovement[]);
+        } else {
+          setMovements([]);
+        }
+      } catch (err) {
+        console.error('Item movement fetch error:', err);
+        setMovements([]);
+      } finally {
+        setMovementsLoading(false);
+      }
+    },
+    [token]
+  );
+
   // Fetch item details
   const fetchItemDetails = useCallback(async () => {
     setLoading(true);
@@ -262,6 +302,7 @@ export default function ItemDetailPage() {
         // Fetch warehouse data for the item
         if (itemData.item_code) {
           await fetchWarehouseData(itemData.item_code);
+          await fetchItemMovements(itemData.item_code);
         }
       } else {
         setError(t.detail.itemNotFound);
@@ -272,7 +313,7 @@ export default function ItemDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [itemCode, t.detail.fetchError, t.detail.itemNotFound, fetchWarehouseData]);
+  }, [itemCode, t.detail.fetchError, t.detail.itemNotFound, fetchWarehouseData, fetchItemMovements]);
 
   // Fetch all item codes for navigation
   const fetchItemList = async () => {
@@ -373,6 +414,88 @@ export default function ItemDetailPage() {
     [formatDate, t.detail.warehouseColumns]
   );
 
+  const movementColumns = useMemo(
+    () => [
+      {
+        title: t.detail.movementDate,
+        dataIndex: 'date',
+        key: 'date',
+        width: 140,
+        render: (d: string | null) => formatDate(d),
+      },
+      {
+        title: t.detail.movementType,
+        dataIndex: 'type_label',
+        key: 'type_label',
+        width: 90,
+        render: (label: string, row: ItemMovement) => {
+          const color =
+            row.qty_kind === 'on_hold' ? 'orange' : row.type_ref === PREFIX_REF.GRN ? 'green' : 'red';
+          return <Tag color={color}>{label}</Tag>;
+        },
+      },
+      {
+        title: t.detail.movementDoc,
+        dataIndex: 'trans_code',
+        key: 'trans_code',
+        width: 160,
+        render: (code: string, row: ItemMovement) => (
+          <button
+            type="button"
+            className="text-blue-600 hover:underline"
+            onClick={() => {
+              const href =
+                row.type_ref === PREFIX_REF.SO
+                  ? `/sales/orders/detail/${encodeURIComponent(code)}`
+                  : `/warehouse/stock/detail/${encodeURIComponent(code)}`;
+              router.push(href);
+            }}
+          >
+            {code}
+          </button>
+        ),
+      },
+      {
+        title: t.detail.movementRef,
+        dataIndex: 'refer_code',
+        key: 'refer_code',
+        width: 140,
+        render: (ref: string) => ref || '-',
+      },
+      {
+        title: t.detail.movementQty,
+        dataIndex: 'qty',
+        key: 'qty',
+        width: 110,
+        align: 'right' as const,
+        render: (qty: number, row: ItemMovement) => {
+          const n = Number(qty || 0);
+          const cls =
+            row.qty_kind === 'on_hold'
+              ? 'text-orange-600'
+              : n >= 0
+                ? 'text-green-600'
+                : 'text-red-600';
+          return (
+            <span className={`font-medium tabular-nums ${cls}`}>
+              {n > 0 ? '+' : ''}
+              {n.toFixed(2)}
+            </span>
+          );
+        },
+      },
+      {
+        title: t.detail.movementApplies,
+        dataIndex: 'qty_kind',
+        key: 'qty_kind',
+        width: 140,
+        render: (kind: ItemMovement['qty_kind']) =>
+          kind === 'on_hold' ? t.detail.movementOnHold : t.detail.movementCurrent,
+      },
+    ],
+    [formatDate, router, t.detail]
+  );
+
   // Helper function to format price
   const formatPrice = (price: number | null | undefined) => {
     if (price === null || price === undefined) return '-';
@@ -422,6 +545,7 @@ export default function ItemDetailPage() {
         }
         if (itemData.item_code) {
           await fetchWarehouseData(itemData.item_code);
+          await fetchItemMovements(itemData.item_code);
         }
       } else {
         setError(t.detail.itemNotFound);
@@ -819,9 +943,14 @@ export default function ItemDetailPage() {
                   <Descriptions.Item label={t.detail.labels.unit}>
                     <Input value={editItem.unit} onChange={e => handleFieldChange('unit', e.target.value)} />
                   </Descriptions.Item>
-                  <Descriptions.Item label={t.detail.labels.stockOnHand}>
-                    <Text strong style={{ color: totalStockOnHand > 0 ? '#52c41a' : '#999' }}>
-                      {totalStockOnHand.toFixed(2)}
+                  <Descriptions.Item label={t.detail.labels.remainQty}>
+                    <Text strong style={{ color: remainQty > 0 ? '#52c41a' : '#999' }}>
+                      {remainQty.toFixed(2)}
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t.detail.labels.onHoldQty}>
+                    <Text strong style={{ color: onHoldQty > 0 ? '#fa8c16' : '#999' }}>
+                      {onHoldQty.toFixed(2)}
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label={t.detail.labels.category}>
@@ -862,9 +991,14 @@ export default function ItemDetailPage() {
                   <Descriptions.Item label={t.detail.labels.unit}>
                     {item.unit || '-'}
                   </Descriptions.Item>
-                  <Descriptions.Item label={t.detail.labels.stockOnHand}>
-                    <Text strong style={{ color: totalStockOnHand > 0 ? '#52c41a' : '#999' }}>
-                      {totalStockOnHand.toFixed(2)}
+                  <Descriptions.Item label={t.detail.labels.remainQty}>
+                    <Text strong style={{ color: remainQty > 0 ? '#52c41a' : '#999' }}>
+                      {remainQty.toFixed(2)}
+                    </Text>
+                  </Descriptions.Item>
+                  <Descriptions.Item label={t.detail.labels.onHoldQty}>
+                    <Text strong style={{ color: onHoldQty > 0 ? '#fa8c16' : '#999' }}>
+                      {onHoldQty.toFixed(2)}
                     </Text>
                   </Descriptions.Item>
                   <Descriptions.Item label={t.detail.labels.category}>
@@ -936,13 +1070,21 @@ export default function ItemDetailPage() {
           {/* Warehouse Information */}
           <Col xs={24} lg={8}>
             <Card title={t.detail.warehouseStock} size="small">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm text-gray-600">
-                  {t.detail.totalStock} <Text strong>{totalStockOnHand.toFixed(2)}</Text>
+              <div className="mb-3 flex flex-col gap-1">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <span>
+                    {t.detail.totalRemain} <Text strong>{remainQty.toFixed(2)}</Text>
+                  </span>
+                  <Tag color={remainQty > 0 ? 'green' : 'default'}>
+                    {remainQty > 0 ? t.detail.inStock : t.detail.noStock}
+                  </Tag>
                 </div>
-                <Tag color={totalStockOnHand > 0 ? 'green' : 'default'}>
-                  {totalStockOnHand > 0 ? t.detail.inStock : t.detail.noStock}
-                </Tag>
+                <div className="text-sm text-gray-600">
+                  {t.detail.totalOnHold}{' '}
+                  <Text strong style={{ color: onHoldQty > 0 ? '#fa8c16' : undefined }}>
+                    {onHoldQty.toFixed(2)}
+                  </Text>
+                </div>
               </div>
               {warehouses.length > 0 ? (
                 <Table<Warehouse>
@@ -958,6 +1100,27 @@ export default function ItemDetailPage() {
                   <div className="text-2xl mb-2">📦</div>
                   <div>{t.detail.noWarehouseData}</div>
                 </div>
+              )}
+            </Card>
+          </Col>
+
+          <Col xs={24}>
+            <Card title={t.detail.itemMovement} size="small">
+              {movementsLoading ? (
+                <div className="text-center py-6">
+                  <Spin />
+                </div>
+              ) : movements.length > 0 ? (
+                <Table<ItemMovement>
+                  columns={movementColumns}
+                  dataSource={movements}
+                  rowKey={(r) => `${r.trans_code}-${r.type_ref}-${r.qty_kind}`}
+                  pagination={false}
+                  size="small"
+                  scroll={{ x: 780 }}
+                />
+              ) : (
+                <div className="text-center py-4 text-gray-500">{t.detail.noMovements}</div>
               )}
             </Card>
           </Col>

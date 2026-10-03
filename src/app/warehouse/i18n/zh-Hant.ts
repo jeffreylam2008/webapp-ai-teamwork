@@ -52,14 +52,14 @@ export const warehouseZhHant = {
     phone: '電話',
     salesOrderTitle: '選擇出貨用的銷售訂單',
     salesOrderHint:
-      '請選擇已確認的銷售訂單作為送貨單參考。僅列出已確認的訂單；庫存已在確認訂單時扣減。',
+      '請選擇已確認的銷售訂單作為送貨單參考。僅列出已確認的訂單；儲存送貨單時會扣減倉庫庫存並清除銷售訂單的預留。',
     loadingSO: '載入銷售訂單中…',
     selectSO: '選擇銷售訂單',
     noSettledSO: '沒有可用的已確認銷售訂單。請先確認銷售訂單，再建立送貨單。',
     soStatusDraft: '草稿',
     soStatusSettled: '已確認',
     soDraftWarning:
-      '此銷售訂單尚未確認。儲存送貨單將扣減倉庫庫存；若已建立送貨單，之後確認訂單時不會重複扣減。',
+      '此銷售訂單尚未確認。請先確認訂單以預留庫存，再建立送貨單扣減倉庫數量。',
     soVoidCannotUse: '無法使用已作廢的銷售訂單建立送貨單。',
     soDraftCannotUse:
       '此銷售訂單尚未確認。請先確認訂單，或按「略過」建立不參考銷售訂單的送貨單。',

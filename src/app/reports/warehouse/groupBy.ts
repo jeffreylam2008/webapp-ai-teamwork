@@ -1,3 +1,5 @@
+import { defaultDisplayForRef, normalizeToPrefixRef } from '@/lib/prefixRef';
+
 export type WarehouseReportGroupBy =
   | 'document'
   | 'document_detail'
@@ -30,7 +32,18 @@ export function isDetailGroup(groupBy: WarehouseReportGroupBy): boolean {
 
 export const WAREHOUSE_MOVEMENT_LABELS: Record<string, { en: string; zh: string }> = {
   GRN: { en: 'Goods Received (GRN)', zh: '收貨 (GRN)' },
+  GR: { en: 'Goods Received (GR)', zh: '收貨 (GR)' },
   DN: { en: 'Delivery Note (DN)', zh: '送貨單 (DN)' },
   ADJ: { en: 'Adjustment (ADJ)', zh: '調整 (ADJ)' },
   ST: { en: 'Stocktake (ST)', zh: '盤點 (ST)' },
 };
+
+export function warehouseMovementLabelKey(code: string): string {
+  const raw = String(code || '').trim().toUpperCase();
+  if (!raw) return '';
+  if (WAREHOUSE_MOVEMENT_LABELS[raw]) return raw;
+  const ref = normalizeToPrefixRef(raw);
+  const display = defaultDisplayForRef(ref).toUpperCase();
+  if (WAREHOUSE_MOVEMENT_LABELS[display]) return display;
+  return raw;
+}

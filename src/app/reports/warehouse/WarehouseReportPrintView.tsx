@@ -11,6 +11,7 @@ import { formatDisplayDateTime, logTimestamp } from '@/lib/datetime';
 import {
   parseWarehouseReportGroupBy,
   WAREHOUSE_MOVEMENT_LABELS,
+  warehouseMovementLabelKey,
   type WarehouseReportGroupBy,
 } from './groupBy';
 
@@ -212,7 +213,7 @@ export function WarehouseReportPrintView() {
   );
 
   const movementLabel = (code: string) => {
-    const key = String(code || '').trim().toUpperCase();
+    const key = warehouseMovementLabelKey(code);
     const entry = WAREHOUSE_MOVEMENT_LABELS[key];
     if (!entry) return key || '-';
     return lang === 'zh-Hant' ? entry.zh : entry.en;

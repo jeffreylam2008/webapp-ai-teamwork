@@ -27,6 +27,7 @@ interface DbItem {
   type: number;
   unit?: string;
   stock_on_hand?: number;
+  on_hold_qty?: number;
   image_name?: string;
   image_body?: string | null;
   create_date?: string;
@@ -215,7 +216,7 @@ export default function ProductsItemsPage() {
       width: 180,
     },
     {
-      title: t.columns.stockOnHand,
+      title: t.columns.remainQty,
       dataIndex: 'stock_on_hand',
       key: 'stock_on_hand',
       sorter: (a: DbItem, b: DbItem) => (Number(a.stock_on_hand) || 0) - (Number(b.stock_on_hand) || 0),
@@ -226,6 +227,23 @@ export default function ProductsItemsPage() {
         if (Number.isNaN(n)) return '-';
         return (
           <span className="text-blue-600 font-medium tabular-nums">{n.toFixed(2)}</span>
+        );
+      },
+    },
+    {
+      title: t.columns.onHoldQty,
+      dataIndex: 'on_hold_qty',
+      key: 'on_hold_qty',
+      sorter: (a: DbItem, b: DbItem) => (Number(a.on_hold_qty) || 0) - (Number(b.on_hold_qty) || 0),
+      width: 120,
+      align: 'right' as const,
+      render: (val: number | string | null | undefined) => {
+        const n = Number(val);
+        if (Number.isNaN(n)) return '-';
+        return (
+          <span className={`font-medium tabular-nums ${n > 0 ? 'text-orange-600' : 'text-gray-500'}`}>
+            {n.toFixed(2)}
+          </span>
         );
       },
     },

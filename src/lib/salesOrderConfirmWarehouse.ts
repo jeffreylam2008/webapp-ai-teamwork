@@ -3,10 +3,18 @@ import { applyWarehouseQtyDeltas } from '@/lib/warehouseStock';
 import {
   clearSalesOrderWarehouseStageHold,
   getSalesOrderWarehouseStageHoldQtyByItem,
-  hasSalesOrderWarehouseStageHold,
 } from '@/lib/salesOrderWarehouseStage';
 
 const EPS = 1e-9;
+
+function mapsMatch(a: Map<string, number>, b: Map<string, number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const [itemCode, qty] of a) {
+    const other = b.get(itemCode);
+    if (other == null || Math.abs(other - qty) > EPS) return false;
+  }
+  return true;
+}
 
 /**
  * Deduct physical warehouse qty for DN line items (negative deltas).
@@ -47,21 +55,17 @@ export type FulfillDnStockResult = {
   deducted: boolean;
   /** True when SO stage holds were cleared. */
   clearedStage: boolean;
-  /**
-   * Confirmed SO had no t_warehouse_stage rows — treated as legacy confirm-time
-   * deduction (do not deduct again). New confirms always write stage holds.
-   */
   legacySkipped: boolean;
 };
 
 /**
- * Normal practice for DN linked to a confirmed SO:
- * 1) Find t_warehouse_stage holds for the SO (written at draft/confirm)
- * 2) Deduct that qty from t_warehouse
- * 3) Clear the SO stage holds
+ * DN stock flow:
+ * 1) SO already wrote t_warehouse_stage (or we rebuild it from SO lines)
+ * 2) Confirm DN items against those stage records
+ * 3) Deduct confirmed qty from t_warehouse
+ * 4) Delete the SO stage rows
  *
- * If the SO has no stage rows, assume legacy confirm already deducted physical stock.
- * DN without SO reference: deduct from warehouse only.
+ * DN without SO reference: deduct from warehouse using DN lines only.
  */
 export async function fulfillDeliveryNoteWarehouseStock(params: {
   stockShop: string;
@@ -78,17 +82,19 @@ export async function fulfillDeliveryNoteWarehouseStock(params: {
     return { deducted: true, clearedStage: false, legacySkipped: false };
   }
 
-  const stillReserved = await hasSalesOrderWarehouseStageHold(referCode);
-  if (!stillReserved) {
-    // Legacy: confirm deducted warehouse and cleared/never wrote stage.
-    return { deducted: false, clearedStage: false, legacySkipped: true };
+  const staged = await getSalesOrderWarehouseStageHoldQtyByItem(referCode);
+  if (staged.size === 0) {
+    throw new Error(
+      `No warehouse stage records found for sales order ${referCode}. Confirm the sales order so items are reserved, then create the delivery note.`
+    );
+  }
+  if (!mapsMatch(staged, qtyByItem)) {
+    throw new Error(
+      'Delivery note items must match the sales-order warehouse stage records (item and quantity)'
+    );
   }
 
-  const staged = await getSalesOrderWarehouseStageHoldQtyByItem(referCode);
-  // Consume staged reservation quantities (source of truth while reserved).
-  const toDeduct = staged.size > 0 ? staged : qtyByItem;
-
-  await deductWarehouseForDeliveryNote(stockShop, toDeduct);
+  await deductWarehouseForDeliveryNote(stockShop, staged);
   await clearSalesOrderWarehouseStageHold(referCode);
   return { deducted: true, clearedStage: true, legacySkipped: false };
 }

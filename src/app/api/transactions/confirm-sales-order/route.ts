@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbService from '@/lib/database';
 import { extractTokenFromRequest, verifyToken } from '@/lib/authUtils';
 import { logTransactionAction } from '@/lib/audit';
-import { clearSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
-import { deductWarehouseForConfirmedSalesOrder } from '@/lib/salesOrderConfirmWarehouse';
+import { syncSalesOrderWarehouseStageHold } from '@/lib/salesOrderWarehouseStage';
 import { PREFIX_REF, effectivePrefixRef, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
 import {
   assertTransCodeInShopScope,
@@ -15,8 +14,8 @@ import {
  * POST /api/transactions/confirm-sales-order
  * Body: { transCode: string }
  *
- * Confirms a draft Sales Order (sets is_settle = 1), clears draft warehouse holds,
- * then deducts line quantities from t_warehouse.
+ * Confirms a draft Sales Order (sets is_settle = 1) and keeps warehouse reservation
+ * (t_warehouse_stage holds). Physical stock is deducted when the delivery note is created.
  */
 export async function POST(request: NextRequest) {
   const token = extractTokenFromRequest(request);
@@ -85,19 +84,22 @@ export async function POST(request: NextRequest) {
         .slice(0, 10);
     if (!stockShop) {
       return NextResponse.json(
-        { success: false, error: 'Sales order is missing shop or warehouse code for stock deduction' },
+        { success: false, error: 'Sales order is missing shop or warehouse code for stock reservation' },
         { status: 400 }
       );
     }
 
-    const dnCheck = await dbService.query<{ c: number }>(
-      `SELECT COUNT(*) AS c FROM t_transaction_h
-       WHERE ${sqlEqualsStoredPrefixRef()}
-         AND refer_code = ?
-         AND COALESCE(is_void, 0) = 0`,
-      [...bindEqualsStoredPrefixRef(PREFIX_REF.DN), transCode]
+    const lines = await dbService.query<{ item_code: string; qty: number }>(
+      'SELECT item_code, qty FROM t_transaction_d WHERE trans_code = ?',
+      [transCode]
     );
-    const hasDeliveryNote = Number((dnCheck.data?.[0] as { c?: unknown })?.c ?? 0) > 0;
+    const detailQtyByItem = new Map<string, number>();
+    for (const line of lines.data || []) {
+      const ic = String(line.item_code || '').trim();
+      const q = Number(line.qty || 0);
+      if (!ic || !Number.isFinite(q) || q <= 0) continue;
+      detailQtyByItem.set(ic, (detailQtyByItem.get(ic) || 0) + q);
+    }
 
     await dbService.withTransaction(async () => {
       await dbService.query(
@@ -105,10 +107,14 @@ export async function POST(request: NextRequest) {
          WHERE trans_code = ? AND ${sqlEqualsStoredPrefixRef()} AND shop_code = ?`,
         [transCode, ...bindEqualsStoredPrefixRef(PREFIX_REF.SO), scopeShop]
       );
-      await clearSalesOrderWarehouseStageHold(transCode);
-      if (!hasDeliveryNote) {
-        await deductWarehouseForConfirmedSalesOrder(transCode, stockShop);
-      }
+      await syncSalesOrderWarehouseStageHold({
+        transCode,
+        shopCode: stockShop,
+        effectivePrefix: PREFIX_REF.SO,
+        effectiveIsVoid: 0,
+        effectiveIsSettle: 1,
+        detailQtyByItem,
+      });
     });
 
     void logTransactionAction({
@@ -126,9 +132,6 @@ export async function POST(request: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Database error';
     console.error('[confirm-sales-order]', err);
-    if (msg.startsWith('Insufficient warehouse stock')) {
-      return NextResponse.json({ success: false, error: msg }, { status: 400 });
-    }
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

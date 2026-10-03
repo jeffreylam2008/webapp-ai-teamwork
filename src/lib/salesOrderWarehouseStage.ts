@@ -1,27 +1,67 @@
 import dbService from '@/lib/database';
 import { sqlNow } from '@/lib/datetime';
-import { PREFIX_REF, normalizeToPrefixRef, bindEqualsStoredPrefixRef, sqlEqualsStoredPrefixRef } from '@/lib/prefixRef';
+import {
+  PREFIX_REF,
+  normalizeToPrefixRef,
+  bindEqualsStoredPrefixRef,
+  sqlEqualsStoredPrefixRef,
+} from '@/lib/prefixRef';
 
-let refColumnCached: boolean | null = null;
+let schemaReady = false;
 
-async function hasRefTransCodeColumn(): Promise<boolean> {
-  if (refColumnCached !== null) return refColumnCached;
-  const r = await dbService.query<{ c: number }>(
-    `SELECT COUNT(*) AS c
-     FROM INFORMATION_SCHEMA.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 't_warehouse_stage'
-       AND COLUMN_NAME = 'ref_trans_code'`
-  );
-  refColumnCached = Number((r.data?.[0] as { c?: unknown })?.c ?? 0) > 0;
-  return refColumnCached;
+function isSalesOrderPrefix(value: string | null | undefined): boolean {
+  return normalizeToPrefixRef(value) === PREFIX_REF.SO;
 }
 
-/** Remove SO stock holds for this transaction (no-op if migration not applied). */
+/** Create t_warehouse_stage / ref_trans_code if the reservation table is incomplete. */
+export async function ensureWarehouseStageSchema(): Promise<void> {
+  if (schemaReady) return;
+
+  const table = await dbService.query<{ c: number }>(
+    `SELECT COUNT(*) AS c
+     FROM INFORMATION_SCHEMA.TABLES
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 't_warehouse_stage'`
+  );
+  if (Number((table.data?.[0] as { c?: unknown })?.c ?? 0) === 0) {
+    await dbService.query(`
+      CREATE TABLE t_warehouse_stage (
+        uid INT NOT NULL AUTO_INCREMENT,
+        shop_code VARCHAR(20) DEFAULT NULL,
+        ref_trans_code VARCHAR(40) DEFAULT NULL,
+        item_code VARCHAR(40) DEFAULT NULL,
+        qty DECIMAL(18, 4) DEFAULT 0,
+        type VARCHAR(20) DEFAULT NULL,
+        create_date DATETIME DEFAULT NULL,
+        modify_date DATETIME DEFAULT NULL,
+        PRIMARY KEY (uid),
+        KEY idx_wh_stage_ref (ref_trans_code),
+        KEY idx_wh_stage_item (item_code)
+      )
+    `);
+  } else {
+    const col = await dbService.query<{ c: number }>(
+      `SELECT COUNT(*) AS c
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 't_warehouse_stage'
+         AND COLUMN_NAME = 'ref_trans_code'`
+    );
+    if (Number((col.data?.[0] as { c?: unknown })?.c ?? 0) === 0) {
+      await dbService.query(
+        'ALTER TABLE t_warehouse_stage ADD COLUMN ref_trans_code VARCHAR(40) DEFAULT NULL'
+      );
+    }
+  }
+
+  schemaReady = true;
+}
+
+/** Remove SO stock holds for this transaction. */
 export async function clearSalesOrderWarehouseStageHold(transCode: string): Promise<void> {
   const code = String(transCode || '').trim();
   if (!code) return;
-  if (!(await hasRefTransCodeColumn())) return;
+  await ensureWarehouseStageSchema();
   await dbService.query('DELETE FROM t_warehouse_stage WHERE ref_trans_code = ?', [code]);
 }
 
@@ -29,7 +69,7 @@ export async function clearSalesOrderWarehouseStageHold(transCode: string): Prom
 export async function hasSalesOrderWarehouseStageHold(transCode: string): Promise<boolean> {
   const code = String(transCode || '').trim();
   if (!code) return false;
-  if (!(await hasRefTransCodeColumn())) return false;
+  await ensureWarehouseStageSchema();
   const r = await dbService.query<{ c: number }>(
     'SELECT COUNT(*) AS c FROM t_warehouse_stage WHERE ref_trans_code = ? LIMIT 1',
     [code]
@@ -43,7 +83,8 @@ export async function getSalesOrderWarehouseStageHoldQtyByItem(
 ): Promise<Map<string, number>> {
   const code = String(transCode || '').trim();
   const out = new Map<string, number>();
-  if (!code || !(await hasRefTransCodeColumn())) return out;
+  if (!code) return out;
+  await ensureWarehouseStageSchema();
   const rows = await dbService.query<{ item_code: string; qty: number | null }>(
     `SELECT item_code, qty FROM t_warehouse_stage WHERE ref_trans_code = ?`,
     [code]
@@ -51,7 +92,6 @@ export async function getSalesOrderWarehouseStageHoldQtyByItem(
   for (const row of rows.data || []) {
     const ic = String(row.item_code || '').trim();
     if (!ic) continue;
-    // Stage holds are stored as negative qty; expose positive reserved amount.
     const q = Math.abs(Number(row.qty ?? 0));
     if (!Number.isFinite(q) || q <= 0) continue;
     out.set(ic, (out.get(ic) || 0) + q);
@@ -77,8 +117,7 @@ export async function salesOrderHasNonVoidDeliveryNote(transCode: string): Promi
  * Active SO (draft or confirmed, not void, not yet delivered): write t_warehouse_stage
  * rows (type hold, negative qty) so available stock (warehouse + sum(stage)) reflects reservation.
  *
- * Normal practice: reserve on SO, deduct physical stock only when DN is created.
- * Void SO or SO that already has a DN: clears holds only.
+ * Physical stock is deducted only when DN confirms those stage rows.
  */
 export async function syncSalesOrderWarehouseStageHold(params: {
   transCode: string;
@@ -89,18 +128,13 @@ export async function syncSalesOrderWarehouseStageHold(params: {
   effectiveIsSettle: number;
   detailQtyByItem: Map<string, number>;
 }): Promise<void> {
-  if (!(await hasRefTransCodeColumn())) {
-    console.warn(
-      '[salesOrderWarehouseStage] t_warehouse_stage.ref_trans_code missing; run scripts/migrations/warehouse_stage_so_reserve.sql'
-    );
-    return;
-  }
+  await ensureWarehouseStageSchema();
 
   const { transCode, shopCode, effectivePrefix, effectiveIsVoid, detailQtyByItem } = params;
   const code = String(transCode || '').trim();
   if (!code) return;
 
-  if (normalizeToPrefixRef(effectivePrefix) !== PREFIX_REF.SO) {
+  if (!isSalesOrderPrefix(effectivePrefix)) {
     await clearSalesOrderWarehouseStageHold(code);
     return;
   }
@@ -109,7 +143,6 @@ export async function syncSalesOrderWarehouseStageHold(params: {
 
   if (effectiveIsVoid === 1) return;
 
-  // After DN ships, reservation is cleared and must not be recreated.
   if (await salesOrderHasNonVoidDeliveryNote(code)) return;
 
   const shop = String(shopCode || '').trim().slice(0, 10) || 'UNKNOWN';
@@ -127,8 +160,8 @@ export async function syncSalesOrderWarehouseStageHold(params: {
 }
 
 /**
- * Ensure a confirmed (or draft) undelivered SO has stage holds matching its lines.
- * Used before DN create so reservation rows exist to consume.
+ * Ensure an undelivered SO has stage holds matching its lines.
+ * Call this before inserting a DN so staging rows exist to confirm and consume.
  */
 export async function ensureSalesOrderWarehouseStageHold(params: {
   transCode: string;
@@ -137,7 +170,7 @@ export async function ensureSalesOrderWarehouseStageHold(params: {
   const code = String(params.transCode || '').trim();
   const shop = String(params.shopCode || '').trim();
   if (!code || !shop) return;
-  if (!(await hasRefTransCodeColumn())) return;
+  await ensureWarehouseStageSchema();
   if (await salesOrderHasNonVoidDeliveryNote(code)) return;
 
   const hdr = await dbService.query<{
@@ -151,7 +184,7 @@ export async function ensureSalesOrderWarehouseStageHold(params: {
   );
   const row = hdr.data?.[0];
   if (!row) return;
-  if (normalizeToPrefixRef(String(row.prefix_ref || row.prefix || '')) !== PREFIX_REF.SO) return;
+  if (!isSalesOrderPrefix(String(row.prefix_ref || row.prefix || ''))) return;
   if (Number(row.is_void ?? 0) === 1) return;
 
   const lines = await dbService.query<{ item_code: string; qty: number | null }>(

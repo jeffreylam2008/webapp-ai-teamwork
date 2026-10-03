@@ -20,6 +20,7 @@ type ItemRow = {
   type?: number | null;
   unit?: string | null;
   stock_on_hand?: number | null;
+  on_hold_qty?: number | null;
   image_name?: string | null;
   image_body?: string | null;
   create_date?: string | null;
@@ -244,9 +245,11 @@ export async function GET(request: NextRequest) {
         'modify_date',
       ] as const
     ).map((c) => selectExpr(c, cols, 'i'));
-    // On-hand qty from warehouse (updated by GRN, etc.) + staged, same idea as /api/warehouse/current-stock
-    const stockExpr =
-      '(COALESCE(w.wh_qty, 0) + COALESCE(st.staged_qty, 0)) AS stock_on_hand';
+    // Remain qty = warehouse + stage (holds are negative). On-hold = abs of staged holds.
+    const stockExpr = [
+      '(COALESCE(w.wh_qty, 0) + COALESCE(st.staged_qty, 0)) AS stock_on_hand',
+      'GREATEST(0, -COALESCE(st.staged_qty, 0)) AS on_hold_qty',
+    ].join(', ');
     const selectList = [...itemColsNoStock, stockExpr].join(', ');
 
     const dataResult = await dbService.query<ItemRow>(
